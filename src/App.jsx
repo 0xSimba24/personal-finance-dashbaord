@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { fetchCryptoPrices, fetchAllMFNavs, fetchEquityPricesFromSheet, generateSheetTemplate } from "./priceService.js";
 
 const uid = () => Math.random().toString(36).slice(2, 9);
 const STORE_KEY = "fin-dashboard-v3";
 
 const defaultData = {
-  settings: { eurToInr: 91.5, currentPhase: 2, lastUpdated: null },
+  settings: { eurToInr: 91.5, currentPhase: 2, lastUpdated: null, googleSheetUrl: "" },
   income: [
     { id: uid(), name: "Net Salary", amount: 4200, currency: "EUR", frequency: "monthly" },
   ],
@@ -27,8 +28,8 @@ const defaultData = {
     { id: 3, name: "Grow & Pay Down", target: 0, current: 0, status: "locked", currency: "EUR", milestones: [] },
   ],
   mutualFunds: [
-    { id: uid(), name: "PPFAS Flexi Cap", units: 0, costPrice: 0, currentPrice: 0, currency: "INR", liquid: true },
-    { id: uid(), name: "PPFAS Niece", units: 0, costPrice: 0, currentPrice: 0, currency: "INR", liquid: false },
+    { id: uid(), name: "PPFAS Flexi Cap", units: 0, costPrice: 0, currentPrice: 0, currency: "INR", liquid: true, schemeCode: "122639" },
+    { id: uid(), name: "PPFAS Niece", units: 0, costPrice: 0, currentPrice: 0, currency: "INR", liquid: false, schemeCode: "122639" },
   ],
   equityAccounts: [
     { id: uid(), name: "Zerodha", stocks: [] },
@@ -41,9 +42,9 @@ const defaultData = {
     { id: uid(), name: "Recurring Deposit", type: "RD", amount: 0, currency: "INR", liquid: false },
   ],
   crypto: [
-    { id: uid(), name: "BTC", quantity: 0, costPrice: 0, currentPrice: 0, currency: "USD", liquid: true },
-    { id: uid(), name: "ETH", quantity: 0, costPrice: 0, currentPrice: 0, currency: "USD", liquid: true },
-    { id: uid(), name: "MegaETH", quantity: 0, costPrice: 0, currentPrice: 0, currency: "USD", liquid: false },
+    { id: uid(), name: "BTC", quantity: 0, costPrice: 0, currentPrice: 0, currency: "USD", liquid: true, coingeckoId: "bitcoin" },
+    { id: uid(), name: "ETH", quantity: 0, costPrice: 0, currentPrice: 0, currency: "USD", liquid: true, coingeckoId: "ethereum" },
+    { id: uid(), name: "MegaETH", quantity: 0, costPrice: 0, currentPrice: 0, currency: "USD", liquid: false, coingeckoId: "" },
   ],
   realEstate: [],
   esops: [
@@ -249,7 +250,7 @@ export default function App() {
 
   // Equity account helpers
   const addStockToAccount = useCallback((accountId) => {
-    const accts = data.equityAccounts.map(a => a.id === accountId ? { ...a, stocks: [...a.stocks, { id: uid(), name: "New Stock", quantity: 0, costPrice: 0, currentPrice: 0, currency: "INR", liquid: true }] } : a);
+    const accts = data.equityAccounts.map(a => a.id === accountId ? { ...a, stocks: [...a.stocks, { id: uid(), name: "New Stock", quantity: 0, costPrice: 0, currentPrice: 0, currency: "INR", liquid: true, nseTicker: "" }] } : a);
     update("equityAccounts", accts);
   }, [data, update]);
 
@@ -354,6 +355,77 @@ export default function App() {
     };
     input.click();
   }, [save]);
+
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshMsg, setRefreshMsg] = useState("");
+  const [showPriceSetup, setShowPriceSetup] = useState(false);
+
+  const refreshPrices = useCallback(async () => {
+    if (!data || refreshing) return;
+    setRefreshing(true);
+    setRefreshMsg("Fetching prices...");
+    let updated = { ...data };
+    let results = [];
+
+    // 1. Crypto (CoinGecko)
+    try {
+      setRefreshMsg("Fetching crypto prices...");
+      const cryptoPrices = await fetchCryptoPrices(data.crypto);
+      if (Object.keys(cryptoPrices).length > 0) {
+        updated.crypto = updated.crypto.map(c => {
+          if (c.coingeckoId && cryptoPrices[c.coingeckoId]) {
+            return { ...c, currentPrice: cryptoPrices[c.coingeckoId] };
+          }
+          return c;
+        });
+        results.push(`Crypto: ${Object.keys(cryptoPrices).length} updated`);
+      }
+    } catch (e) { results.push("Crypto: failed"); }
+
+    // 2. Mutual Funds (mfapi.in)
+    try {
+      setRefreshMsg("Fetching MF NAVs...");
+      const mfNavs = await fetchAllMFNavs(data.mutualFunds);
+      if (Object.keys(mfNavs).length > 0) {
+        updated.mutualFunds = updated.mutualFunds.map(f => {
+          if (f.schemeCode && mfNavs[f.schemeCode]) {
+            return { ...f, currentPrice: mfNavs[f.schemeCode] };
+          }
+          return f;
+        });
+        results.push(`MFs: ${Object.keys(mfNavs).length} updated`);
+      }
+    } catch (e) { results.push("MFs: failed"); }
+
+    // 3. Indian Equities (Google Sheets)
+    try {
+      const sheetUrl = data.settings.googleSheetUrl;
+      if (sheetUrl) {
+        setRefreshMsg("Fetching equity prices...");
+        const eqPrices = await fetchEquityPricesFromSheet(sheetUrl);
+        if (Object.keys(eqPrices).length > 0) {
+          updated.equityAccounts = updated.equityAccounts.map(acct => ({
+            ...acct,
+            stocks: acct.stocks.map(st => {
+              const ticker = (st.nseTicker || st.name || "").toUpperCase().trim();
+              if (ticker && eqPrices[ticker]) {
+                return { ...st, currentPrice: eqPrices[ticker] };
+              }
+              return st;
+            })
+          }));
+          results.push(`Equities: ${Object.keys(eqPrices).length} prices found`);
+        }
+      } else {
+        results.push("Equities: no sheet URL set");
+      }
+    } catch (e) { results.push("Equities: failed"); }
+
+    save(updated);
+    setRefreshMsg(results.join(" · "));
+    setRefreshing(false);
+    setTimeout(() => setRefreshMsg(""), 8000);
+  }, [data, refreshing, save]);
 
   if (loading || !data) return (
     <div style={{ ...s.page, display: "flex", alignItems: "center", justifyContent: "center", height: "100vh" }}>
@@ -463,11 +535,91 @@ export default function App() {
         </div>
       </div>
       <div style={{ ...s.flexG, justifyContent: "flex-end" }}>
+        <button style={{ ...s.btn, background: "#6366f1" }} onClick={refreshPrices} disabled={refreshing}>
+          {refreshing ? "⏳ Refreshing..." : "🔄 Refresh Prices"}
+        </button>
+        <button style={s.btnOutline} onClick={() => setShowPriceSetup(!showPriceSetup)}>⚙ Price Feed Setup</button>
         <button style={s.btnOutline} onClick={importData}>📂 Import</button>
         <button style={s.btnOutline} onClick={exportData}>💾 Export</button>
         <button style={s.btn} onClick={takeSnapshot}>📸 Save Snapshot</button>
         <button style={s.btnDanger} onClick={() => { if (confirm("Reset all data?")) save(defaultData); }}>Reset All</button>
       </div>
+      {refreshMsg && <div style={{ padding: "8px 14px", borderRadius: "6px", background: `${colors.accent}15`, border: `1px solid ${colors.accent}30`, fontSize: "11px", color: colors.accent }}>{refreshMsg}</div>}
+
+      {showPriceSetup && <div style={s.card}>
+        <div style={s.h2}>Price Feed Setup</div>
+
+        <div style={{ marginBottom: "16px" }}>
+          <div style={{ fontSize: "12px", fontWeight: 600, marginBottom: "6px" }}>Google Sheet URL (for Indian equities)</div>
+          <div style={{ fontSize: "11px", color: colors.textDim, marginBottom: "6px" }}>
+            Create a Google Sheet → paste the template below → File → Share → Publish to web → CSV → paste URL here
+          </div>
+          <input style={{ ...s.input, marginBottom: "8px" }} placeholder="https://docs.google.com/spreadsheets/d/.../pub?output=csv"
+            value={data.settings.googleSheetUrl || ""} onChange={e => update("settings", { ...data.settings, googleSheetUrl: e.target.value })} />
+          <button style={s.btnOutline} onClick={() => {
+            const { text } = generateSheetTemplate(data.equityAccounts);
+            navigator.clipboard.writeText(text).then(() => alert("Template copied! Paste it into Google Sheets column A & B."));
+          }}>📋 Copy Sheet Template to Clipboard</button>
+        </div>
+
+        <div style={{ marginBottom: "16px" }}>
+          <div style={{ fontSize: "12px", fontWeight: 600, marginBottom: "6px" }}>Crypto — CoinGecko IDs</div>
+          <div style={{ fontSize: "11px", color: colors.textDim, marginBottom: "6px" }}>
+            Set the CoinGecko ID for each token. Find IDs at coingecko.com (e.g. "bitcoin", "ethereum", "hyperliquid", "pudgy-penguins")
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+            {data.crypto.filter(c => c.quantity > 0).map(c => (
+              <div key={c.id} style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                <span style={{ fontSize: "11px", width: "120px", color: colors.textDim }}>{c.name}</span>
+                <input style={{ ...s.input, width: "200px" }} placeholder="coingecko-id (leave empty to skip)"
+                  value={c.coingeckoId || ""} onChange={e => updateItem("crypto", c.id, "coingeckoId", e.target.value)} />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <div style={{ fontSize: "12px", fontWeight: 600, marginBottom: "6px" }}>Mutual Funds — AMFI Scheme Codes</div>
+          <div style={{ fontSize: "11px", color: colors.textDim, marginBottom: "6px" }}>
+            Find codes at mfapi.in (e.g. PPFAS Flexi Cap Direct = 122639)
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+            {data.mutualFunds.map(f => (
+              <div key={f.id} style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                <span style={{ fontSize: "11px", width: "180px", color: colors.textDim }}>{f.name}</span>
+                <input style={{ ...s.input, width: "120px" }} placeholder="scheme code"
+                  value={f.schemeCode || ""} onChange={e => updateItem("mutualFunds", f.id, "schemeCode", e.target.value)} />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ marginTop: "12px" }}>
+          <div style={{ fontSize: "12px", fontWeight: 600, marginBottom: "6px" }}>Equity NSE Tickers</div>
+          <div style={{ fontSize: "11px", color: colors.textDim, marginBottom: "6px" }}>
+            By default, the stock name is used as the NSE ticker. Override below only if the name differs from the NSE symbol.
+          </div>
+          {(data.equityAccounts || []).map(acct => {
+            const mismatched = acct.stocks.filter(st => st.quantity > 0 && st.nseTicker && st.nseTicker !== st.name);
+            const hasStocks = acct.stocks.filter(st => st.quantity > 0);
+            if (hasStocks.length === 0) return null;
+            return (
+              <div key={acct.id} style={{ marginBottom: "8px" }}>
+                <div style={{ fontSize: "11px", fontWeight: 600, color: colors.accent, marginBottom: "4px" }}>{acct.name}</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
+                  {hasStocks.map(st => (
+                    <div key={st.id} style={{ display: "flex", gap: "4px", alignItems: "center" }}>
+                      <span style={{ fontSize: "10px", color: colors.textDim, width: "80px" }}>{st.name}</span>
+                      <input style={{ ...s.input, width: "90px", fontSize: "10px" }} placeholder={st.name}
+                        value={st.nseTicker || ""} onChange={e => updateStock(acct.id, st.id, "nseTicker", e.target.value)} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>}
     </div>
   );
 
