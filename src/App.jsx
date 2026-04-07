@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { fetchCryptoPrices, fetchAllMFNavs, fetchEquityPricesFromSheet, generateSheetTemplate } from "./priceService.js";
+import { fetchCryptoPrices, fetchHyperliquidPrices, fetchAllMFNavs, fetchEquityPricesFromSheet, generateSheetTemplate } from "./priceService.js";
 
 const uid = () => Math.random().toString(36).slice(2, 9);
 const STORE_KEY = "fin-dashboard-v3";
@@ -367,19 +367,31 @@ export default function App() {
     let updated = { ...data };
     let results = [];
 
-    // 1. Crypto (CoinGecko)
+    // 1. Crypto (CoinGecko + Hyperliquid)
     try {
       setRefreshMsg("Fetching crypto prices...");
+
+      // CoinGecko
       const cryptoPrices = await fetchCryptoPrices(data.crypto);
-      if (Object.keys(cryptoPrices).length > 0) {
-        updated.crypto = updated.crypto.map(c => {
-          if (c.coingeckoId && cryptoPrices[c.coingeckoId]) {
-            return { ...c, currentPrice: cryptoPrices[c.coingeckoId] };
-          }
-          return c;
-        });
-        results.push(`Crypto: ${Object.keys(cryptoPrices).length} updated`);
-      }
+
+      // Hyperliquid (for pre-market tokens)
+      const hlTickers = data.crypto.filter(c => c.hyperliquidTicker).map(c => c.hyperliquidTicker);
+      const hlPrices = await fetchHyperliquidPrices(hlTickers);
+
+      let cryptoCount = 0;
+      updated.crypto = updated.crypto.map(c => {
+        // Hyperliquid takes priority if set
+        if (c.hyperliquidTicker && hlPrices[c.hyperliquidTicker.toUpperCase()]) {
+          cryptoCount++;
+          return { ...c, currentPrice: hlPrices[c.hyperliquidTicker.toUpperCase()] };
+        }
+        if (c.coingeckoId && cryptoPrices[c.coingeckoId]) {
+          cryptoCount++;
+          return { ...c, currentPrice: cryptoPrices[c.coingeckoId] };
+        }
+        return c;
+      });
+      results.push(`Crypto: ${cryptoCount} updated`);
     } catch (e) { results.push("Crypto: failed"); }
 
     // 2. Mutual Funds (mfapi.in)
@@ -563,16 +575,18 @@ export default function App() {
         </div>
 
         <div style={{ marginBottom: "16px" }}>
-          <div style={{ fontSize: "12px", fontWeight: 600, marginBottom: "6px" }}>Crypto — CoinGecko IDs</div>
+          <div style={{ fontSize: "12px", fontWeight: 600, marginBottom: "6px" }}>Crypto — Price Sources</div>
           <div style={{ fontSize: "11px", color: colors.textDim, marginBottom: "6px" }}>
-            Set the CoinGecko ID for each token. Find IDs at coingecko.com (e.g. "bitcoin", "ethereum", "hyperliquid", "pudgy-penguins")
+            Set CoinGecko ID or Hyperliquid ticker for each token. Hyperliquid is used for pre-market tokens. If both are set, Hyperliquid takes priority.
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
             {data.crypto.filter(c => c.quantity > 0).map(c => (
               <div key={c.id} style={{ display: "flex", gap: "8px", alignItems: "center" }}>
                 <span style={{ fontSize: "11px", width: "120px", color: colors.textDim }}>{c.name}</span>
-                <input style={{ ...s.input, width: "200px" }} placeholder="coingecko-id (leave empty to skip)"
+                <input style={{ ...s.input, width: "160px" }} placeholder="CoinGecko ID"
                   value={c.coingeckoId || ""} onChange={e => updateItem("crypto", c.id, "coingeckoId", e.target.value)} />
+                <input style={{ ...s.input, width: "120px" }} placeholder="HL ticker"
+                  value={c.hyperliquidTicker || ""} onChange={e => updateItem("crypto", c.id, "hyperliquidTicker", e.target.value)} />
               </div>
             ))}
           </div>

@@ -1,4 +1,33 @@
-// Price fetching service for crypto (CoinGecko), mutual funds (mfapi.in), and equities (Google Sheets)
+// Price fetching service for crypto (CoinGecko + Hyperliquid), mutual funds (mfapi.in), and equities (Google Sheets)
+
+// ── Hyperliquid (pre-market & spot prices) ──
+export async function fetchHyperliquidPrices(tickers) {
+  // tickers = ["MEGAETH", "HYPE", ...]
+  const validTickers = tickers.filter(Boolean);
+  if (validTickers.length === 0) return {};
+
+  try {
+    const res = await fetch("https://api.hyperliquid.xyz/info", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "allMids" }),
+    });
+    if (!res.ok) throw new Error(`Hyperliquid ${res.status}`);
+    const data = await res.json();
+    // data is { "TICKER": "price_string", ... }
+    const prices = {};
+    for (const ticker of validTickers) {
+      const key = ticker.toUpperCase();
+      if (data[key]) {
+        prices[key] = parseFloat(data[key]);
+      }
+    }
+    return prices;
+  } catch (e) {
+    console.error("Hyperliquid fetch failed:", e);
+    return {};
+  }
+}
 
 // ── CoinGecko (free, no API key, no CORS issues) ──
 export async function fetchCryptoPrices(tokens) {
