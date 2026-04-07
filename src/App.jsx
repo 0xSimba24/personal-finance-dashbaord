@@ -4,7 +4,7 @@ const uid = () => Math.random().toString(36).slice(2, 9);
 const STORE_KEY = "fin-dashboard-v3";
 
 const defaultData = {
-  settings: { eurToInr: 91.5, currentPhase: 2 },
+  settings: { eurToInr: 91.5, currentPhase: 2, lastUpdated: null },
   income: [
     { id: uid(), name: "Net Salary", amount: 4200, currency: "EUR", frequency: "monthly" },
   ],
@@ -179,8 +179,9 @@ export default function App() {
   }, []);
 
   const save = useCallback((d) => {
-    setData(d);
-    storage.set(STORE_KEY, d);
+    const updated = { ...d, settings: { ...d.settings, lastUpdated: new Date().toISOString() } };
+    setData(updated);
+    storage.set(STORE_KEY, updated);
   }, []);
 
   const update = useCallback((key, value) => save({ ...data, [key]: value }), [data, save]);
@@ -318,6 +319,42 @@ export default function App() {
     }]);
   }, [data, calc, update]);
 
+  const exportData = useCallback(() => {
+    if (!data) return;
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `finance-dashboard-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [data]);
+
+  const importData = useCallback(() => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".json";
+    input.onchange = (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        try {
+          const imported = JSON.parse(ev.target.result);
+          if (imported && imported.settings) {
+            if (confirm("This will replace all current data. Continue?")) {
+              save({ ...defaultData, ...imported });
+            }
+          } else {
+            alert("Invalid file format.");
+          }
+        } catch { alert("Failed to parse file."); }
+      };
+      reader.readAsText(file);
+    };
+    input.click();
+  }, [save]);
+
   if (loading || !data) return (
     <div style={{ ...s.page, display: "flex", alignItems: "center", justifyContent: "center", height: "100vh" }}>
       <div style={{ color: colors.accent, fontSize: "14px" }}>Loading dashboard...</div>
@@ -426,6 +463,8 @@ export default function App() {
         </div>
       </div>
       <div style={{ ...s.flexG, justifyContent: "flex-end" }}>
+        <button style={s.btnOutline} onClick={importData}>📂 Import</button>
+        <button style={s.btnOutline} onClick={exportData}>💾 Export</button>
         <button style={s.btn} onClick={takeSnapshot}>📸 Save Snapshot</button>
         <button style={s.btnDanger} onClick={() => { if (confirm("Reset all data?")) save(defaultData); }}>Reset All</button>
       </div>
@@ -635,7 +674,7 @@ export default function App() {
   return (
     <div style={s.page}>
       <div style={{ ...s.flex, marginBottom: "20px", flexWrap: "wrap", gap: "12px" }}>
-        <div><h1 style={s.h1}>Financial Command Center</h1><div style={{ fontSize: "11px", color: colors.textDim, marginTop: "4px" }}>Phase {data.settings.currentPhase} · NW: {fmtBoth(calc.netWorth, rate)}</div></div>
+        <div><h1 style={s.h1}>Financial Command Center</h1><div style={{ fontSize: "11px", color: colors.textDim, marginTop: "4px" }}>Phase {data.settings.currentPhase} · NW: {fmtBoth(calc.netWorth, rate)}{data.settings.lastUpdated && <span> · Last saved: {new Date(data.settings.lastUpdated).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</span>}</div></div>
         <div style={s.flexG}>{tabs.map(t => <button key={t.key} style={s.tab(tab === t.key)} onClick={() => setTab(t.key)}>{t.label}</button>)}</div>
       </div>
       {tab === "overview" && renderOverview()}
