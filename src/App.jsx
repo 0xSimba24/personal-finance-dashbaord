@@ -482,12 +482,13 @@ export default function App() {
 
       {/* Daily Movers */}
       {(() => {
-        const allMovers = [];
+        const cryptoMovers = [];
+        const equityMovers = [];
         data.crypto.forEach(c => {
           if (c.quantity > 0 && c.dailyChangePct != null && c.dailyChangePct !== 0) {
             const val = c.quantity * c.currentPrice;
             const prevVal = val / (1 + c.dailyChangePct / 100);
-            allMovers.push({ name: c.name, pct: c.dailyChangePct, changeEur: toEur(val - prevVal, "USD", rate), type: "Crypto" });
+            cryptoMovers.push({ name: c.name, pct: c.dailyChangePct, changeEur: toEur(val - prevVal, "USD", rate) });
           }
         });
         (data.equityAccounts || []).forEach(acct => {
@@ -495,7 +496,7 @@ export default function App() {
             if (st.quantity > 0 && st.dailyChangePct != null && st.dailyChangePct !== 0) {
               const val = st.quantity * st.currentPrice;
               const prevVal = val / (1 + st.dailyChangePct / 100);
-              allMovers.push({ name: st.name, pct: st.dailyChangePct, changeEur: toEur(val - prevVal, st.currency, rate), type: acct.name });
+              equityMovers.push({ name: st.name, pct: st.dailyChangePct, changeEur: toEur(val - prevVal, st.currency, rate), acct: acct.name });
             }
           });
         });
@@ -503,17 +504,30 @@ export default function App() {
           if (f.units > 0 && f.dailyChangePct != null && f.dailyChangePct !== 0) {
             const val = f.units * f.currentPrice;
             const prevVal = val / (1 + f.dailyChangePct / 100);
-            allMovers.push({ name: f.name, pct: f.dailyChangePct, changeEur: toEur(val - prevVal, f.currency, rate), type: "MF" });
+            equityMovers.push({ name: f.name, pct: f.dailyChangePct, changeEur: toEur(val - prevVal, f.currency, rate), acct: "MF" });
           }
         });
 
+        const allMovers = [...cryptoMovers, ...equityMovers];
         if (allMovers.length === 0) return null;
 
-        const sorted = [...allMovers].sort((a, b) => b.pct - a.pct);
-        const gainers = sorted.filter(m => m.pct > 0).slice(0, 3);
-        const losers = sorted.filter(m => m.pct < 0).reverse().slice(0, 3);
         const totalDayChange = allMovers.reduce((s, m) => s + m.changeEur, 0);
         const totalDayPct = calc.grossAssets > 0 ? (totalDayChange / (calc.grossAssets - totalDayChange)) * 100 : 0;
+
+        const cSorted = [...cryptoMovers].sort((a, b) => b.pct - a.pct);
+        const cGainers = cSorted.filter(m => m.pct > 0).slice(0, 3);
+        const cLosers = cSorted.filter(m => m.pct < 0).reverse().slice(0, 3);
+
+        const eSorted = [...equityMovers].sort((a, b) => b.pct - a.pct);
+        const eGainers = eSorted.filter(m => m.pct > 0).slice(0, 3);
+        const eLosers = eSorted.filter(m => m.pct < 0).reverse().slice(0, 3);
+
+        const MoverRow = ({ m, isGain }) => (
+          <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 10px", borderRadius: "6px", background: isGain ? colors.greenBg : colors.redBg, marginBottom: "4px" }}>
+            <div><span style={{ fontSize: "12px", fontWeight: 600 }}>{m.name}</span>{m.acct && <span style={{ fontSize: "10px", color: colors.textDim, marginLeft: "6px" }}>{m.acct}</span>}</div>
+            <div style={{ textAlign: "right" }}><span style={{ fontSize: "12px", fontWeight: 700, color: isGain ? colors.green : colors.red }}>{isGain ? "+" : ""}{m.pct.toFixed(2)}%</span><span style={{ fontSize: "10px", color: colors.textDim, marginLeft: "6px" }}>{isGain ? "+" : ""}{fmt(m.changeEur)}</span></div>
+          </div>
+        );
 
         return (
           <div style={s.card}>
@@ -526,28 +540,34 @@ export default function App() {
                 </span>
               </div>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px", marginTop: "10px" }}>
-              <div>
-                <div style={{ fontSize: "10px", fontWeight: 600, color: colors.green, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "6px" }}>Top Gainers</div>
-                {gainers.length === 0 ? <div style={{ fontSize: "11px", color: colors.textDim }}>None today</div> :
-                gainers.map((g, i) => (
-                  <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "6px 10px", borderRadius: "6px", background: colors.greenBg, marginBottom: "4px" }}>
-                    <div><span style={{ fontSize: "12px", fontWeight: 600 }}>{g.name}</span><span style={{ fontSize: "10px", color: colors.textDim, marginLeft: "6px" }}>{g.type}</span></div>
-                    <div style={{ textAlign: "right" }}><span style={{ fontSize: "12px", fontWeight: 700, color: colors.green }}>+{g.pct.toFixed(2)}%</span><span style={{ fontSize: "10px", color: colors.textDim, marginLeft: "6px" }}>+{fmt(g.changeEur)}</span></div>
-                  </div>
-                ))}
+
+            {cryptoMovers.length > 0 && <>
+              <div style={{ fontSize: "11px", fontWeight: 700, color: "#f59e0b", textTransform: "uppercase", letterSpacing: "0.5px", marginTop: "14px", marginBottom: "8px" }}>Crypto</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
+                <div>
+                  <div style={{ fontSize: "10px", fontWeight: 600, color: colors.green, marginBottom: "4px" }}>Gainers</div>
+                  {cGainers.length === 0 ? <div style={{ fontSize: "11px", color: colors.textDim }}>—</div> : cGainers.map((g, i) => <MoverRow key={i} m={g} isGain />)}
+                </div>
+                <div>
+                  <div style={{ fontSize: "10px", fontWeight: 600, color: colors.red, marginBottom: "4px" }}>Losers</div>
+                  {cLosers.length === 0 ? <div style={{ fontSize: "11px", color: colors.textDim }}>—</div> : cLosers.map((l, i) => <MoverRow key={i} m={l} isGain={false} />)}
+                </div>
               </div>
-              <div>
-                <div style={{ fontSize: "10px", fontWeight: 600, color: colors.red, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "6px" }}>Top Losers</div>
-                {losers.length === 0 ? <div style={{ fontSize: "11px", color: colors.textDim }}>None today</div> :
-                losers.map((l, i) => (
-                  <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "6px 10px", borderRadius: "6px", background: colors.redBg, marginBottom: "4px" }}>
-                    <div><span style={{ fontSize: "12px", fontWeight: 600 }}>{l.name}</span><span style={{ fontSize: "10px", color: colors.textDim, marginLeft: "6px" }}>{l.type}</span></div>
-                    <div style={{ textAlign: "right" }}><span style={{ fontSize: "12px", fontWeight: 700, color: colors.red }}>{l.pct.toFixed(2)}%</span><span style={{ fontSize: "10px", color: colors.textDim, marginLeft: "6px" }}>{fmt(l.changeEur)}</span></div>
-                  </div>
-                ))}
+            </>}
+
+            {equityMovers.length > 0 && <>
+              <div style={{ fontSize: "11px", fontWeight: 700, color: "#8b5cf6", textTransform: "uppercase", letterSpacing: "0.5px", marginTop: "14px", marginBottom: "8px" }}>Equity & MFs</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
+                <div>
+                  <div style={{ fontSize: "10px", fontWeight: 600, color: colors.green, marginBottom: "4px" }}>Gainers</div>
+                  {eGainers.length === 0 ? <div style={{ fontSize: "11px", color: colors.textDim }}>—</div> : eGainers.map((g, i) => <MoverRow key={i} m={g} isGain />)}
+                </div>
+                <div>
+                  <div style={{ fontSize: "10px", fontWeight: 600, color: colors.red, marginBottom: "4px" }}>Losers</div>
+                  {eLosers.length === 0 ? <div style={{ fontSize: "11px", color: colors.textDim }}>—</div> : eLosers.map((l, i) => <MoverRow key={i} m={l} isGain={false} />)}
+                </div>
               </div>
-            </div>
+            </>}
           </div>
         );
       })()}
