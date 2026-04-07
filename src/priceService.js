@@ -31,20 +31,20 @@ export async function fetchHyperliquidPrices(tickers) {
 
 // ── CoinGecko (free, no API key, no CORS issues) ──
 export async function fetchCryptoPrices(tokens) {
-  // tokens = [{ id: "coingecko-id", ... }]
   const ids = tokens.filter(t => t.coingeckoId).map(t => t.coingeckoId);
   if (ids.length === 0) return {};
 
   try {
     const res = await fetch(
-      `https://api.coingecko.com/api/v3/simple/price?ids=${ids.join(",")}&vs_currencies=usd`
+      `https://api.coingecko.com/api/v3/simple/price?ids=${ids.join(",")}&vs_currencies=usd&include_24hr_change=true`
     );
     if (!res.ok) throw new Error(`CoinGecko ${res.status}`);
     const data = await res.json();
-    // Return { coingeckoId: priceUSD }
     const prices = {};
     for (const id of ids) {
-      if (data[id]?.usd) prices[id] = data[id].usd;
+      if (data[id]?.usd) {
+        prices[id] = { price: data[id].usd, change24h: data[id].usd_24h_change || 0 };
+      }
     }
     return prices;
   } catch (e) {
@@ -88,14 +88,15 @@ export async function fetchEquityPricesFromSheet(csvUrl) {
     const text = await res.text();
     const lines = text.trim().split("\n");
     const prices = {};
-    // Format: ticker,price (skip header if present)
+    // Format: ticker,price,changepct (skip header if present)
     for (const line of lines) {
       const parts = line.split(",");
       if (parts.length >= 2) {
         const ticker = parts[0].trim().replace(/"/g, "");
         const price = parseFloat(parts[1].trim().replace(/"/g, ""));
+        const changePct = parts.length >= 3 ? parseFloat(parts[2].trim().replace(/"/g, "")) : null;
         if (ticker && !isNaN(price) && price > 0 && ticker !== "Symbol" && ticker !== "Ticker") {
-          prices[ticker.toUpperCase()] = price;
+          prices[ticker.toUpperCase()] = { price, changePct: isNaN(changePct) ? null : changePct };
         }
       }
     }
@@ -119,9 +120,9 @@ export function generateSheetTemplate(equityAccounts) {
   }
 
   const sorted = [...tickers].sort();
-  let sheet = "Symbol\tPrice\n";
+  let sheet = "Symbol\tPrice\tChange%\n";
   for (const t of sorted) {
-    sheet += `${t}\t=GOOGLEFINANCE("NSE:${t}")\n`;
+    sheet += `${t}\t=GOOGLEFINANCE("NSE:${t}")\t=GOOGLEFINANCE("NSE:${t}","changepct")\n`;
   }
   return { text: sheet, tickers: sorted };
 }

@@ -371,7 +371,7 @@ export default function App() {
     try {
       setRefreshMsg("Fetching crypto prices...");
 
-      // CoinGecko
+      // CoinGecko (returns { id: { price, change24h } })
       const cryptoPrices = await fetchCryptoPrices(data.crypto);
 
       // Hyperliquid (for pre-market tokens)
@@ -382,12 +382,14 @@ export default function App() {
       updated.crypto = updated.crypto.map(c => {
         // Hyperliquid takes priority if set
         if (c.hyperliquidTicker && hlPrices[c.hyperliquidTicker.toUpperCase()]) {
+          const newPrice = hlPrices[c.hyperliquidTicker.toUpperCase()];
+          const oldPrice = c.currentPrice || newPrice;
           cryptoCount++;
-          return { ...c, currentPrice: hlPrices[c.hyperliquidTicker.toUpperCase()] };
+          return { ...c, currentPrice: newPrice, dailyChangePct: oldPrice > 0 ? ((newPrice - oldPrice) / oldPrice) * 100 : 0 };
         }
         if (c.coingeckoId && cryptoPrices[c.coingeckoId]) {
           cryptoCount++;
-          return { ...c, currentPrice: cryptoPrices[c.coingeckoId] };
+          return { ...c, currentPrice: cryptoPrices[c.coingeckoId].price, dailyChangePct: cryptoPrices[c.coingeckoId].change24h };
         }
         return c;
       });
@@ -421,7 +423,7 @@ export default function App() {
             stocks: acct.stocks.map(st => {
               const ticker = (st.nseTicker || st.name || "").toUpperCase().trim();
               if (ticker && eqPrices[ticker]) {
-                return { ...st, currentPrice: eqPrices[ticker] };
+                return { ...st, currentPrice: eqPrices[ticker].price, dailyChangePct: eqPrices[ticker].changePct };
               }
               return st;
             })
@@ -477,6 +479,79 @@ export default function App() {
         <div style={s.card}><div style={s.h3}>Illiquid Net Worth</div><div style={{ fontSize: "20px", fontWeight: 700, color: colors.yellow }}>{fmt(calc.illiquidNW)}</div><div style={{ fontSize: "11px", color: colors.textDim }}>{fmt(calc.illiquidNW * rate, "INR")}</div></div>
         <div style={s.card}><div style={s.h3}>Total Liabilities</div><div style={{ fontSize: "20px", fontWeight: 700, color: colors.red }}>{fmt(calc.totalLiabEur)}</div><div style={{ fontSize: "11px", color: colors.textDim }}>{fmt(calc.totalLiabEur * rate, "INR")}</div></div>
       </div>
+
+      {/* Daily Movers */}
+      {(() => {
+        const allMovers = [];
+        data.crypto.forEach(c => {
+          if (c.quantity > 0 && c.dailyChangePct != null && c.dailyChangePct !== 0) {
+            const val = c.quantity * c.currentPrice;
+            const prevVal = val / (1 + c.dailyChangePct / 100);
+            allMovers.push({ name: c.name, pct: c.dailyChangePct, changeEur: toEur(val - prevVal, "USD", rate), type: "Crypto" });
+          }
+        });
+        (data.equityAccounts || []).forEach(acct => {
+          (acct.stocks || []).forEach(st => {
+            if (st.quantity > 0 && st.dailyChangePct != null && st.dailyChangePct !== 0) {
+              const val = st.quantity * st.currentPrice;
+              const prevVal = val / (1 + st.dailyChangePct / 100);
+              allMovers.push({ name: st.name, pct: st.dailyChangePct, changeEur: toEur(val - prevVal, st.currency, rate), type: acct.name });
+            }
+          });
+        });
+        data.mutualFunds.forEach(f => {
+          if (f.units > 0 && f.dailyChangePct != null && f.dailyChangePct !== 0) {
+            const val = f.units * f.currentPrice;
+            const prevVal = val / (1 + f.dailyChangePct / 100);
+            allMovers.push({ name: f.name, pct: f.dailyChangePct, changeEur: toEur(val - prevVal, f.currency, rate), type: "MF" });
+          }
+        });
+
+        if (allMovers.length === 0) return null;
+
+        const sorted = [...allMovers].sort((a, b) => b.pct - a.pct);
+        const gainers = sorted.filter(m => m.pct > 0).slice(0, 3);
+        const losers = sorted.filter(m => m.pct < 0).reverse().slice(0, 3);
+        const totalDayChange = allMovers.reduce((s, m) => s + m.changeEur, 0);
+        const totalDayPct = calc.grossAssets > 0 ? (totalDayChange / (calc.grossAssets - totalDayChange)) * 100 : 0;
+
+        return (
+          <div style={s.card}>
+            <div style={s.flex}>
+              <div style={s.h2}>Daily Movers</div>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <span style={{ fontSize: "11px", color: colors.textDim }}>Portfolio Today:</span>
+                <span style={{ fontSize: "16px", fontWeight: 700, color: totalDayChange >= 0 ? colors.green : colors.red }}>
+                  {totalDayChange >= 0 ? "+" : ""}{fmt(totalDayChange)} ({totalDayPct >= 0 ? "+" : ""}{totalDayPct.toFixed(2)}%)
+                </span>
+              </div>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px", marginTop: "10px" }}>
+              <div>
+                <div style={{ fontSize: "10px", fontWeight: 600, color: colors.green, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "6px" }}>Top Gainers</div>
+                {gainers.length === 0 ? <div style={{ fontSize: "11px", color: colors.textDim }}>None today</div> :
+                gainers.map((g, i) => (
+                  <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "6px 10px", borderRadius: "6px", background: colors.greenBg, marginBottom: "4px" }}>
+                    <div><span style={{ fontSize: "12px", fontWeight: 600 }}>{g.name}</span><span style={{ fontSize: "10px", color: colors.textDim, marginLeft: "6px" }}>{g.type}</span></div>
+                    <div style={{ textAlign: "right" }}><span style={{ fontSize: "12px", fontWeight: 700, color: colors.green }}>+{g.pct.toFixed(2)}%</span><span style={{ fontSize: "10px", color: colors.textDim, marginLeft: "6px" }}>+{fmt(g.changeEur)}</span></div>
+                  </div>
+                ))}
+              </div>
+              <div>
+                <div style={{ fontSize: "10px", fontWeight: 600, color: colors.red, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "6px" }}>Top Losers</div>
+                {losers.length === 0 ? <div style={{ fontSize: "11px", color: colors.textDim }}>None today</div> :
+                losers.map((l, i) => (
+                  <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "6px 10px", borderRadius: "6px", background: colors.redBg, marginBottom: "4px" }}>
+                    <div><span style={{ fontSize: "12px", fontWeight: 600 }}>{l.name}</span><span style={{ fontSize: "10px", color: colors.textDim, marginLeft: "6px" }}>{l.type}</span></div>
+                    <div style={{ textAlign: "right" }}><span style={{ fontSize: "12px", fontWeight: 700, color: colors.red }}>{l.pct.toFixed(2)}%</span><span style={{ fontSize: "10px", color: colors.textDim, marginLeft: "6px" }}>{fmt(l.changeEur)}</span></div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       <div style={s.card}>
         <div style={s.h2}>Asset Breakdown</div>
         <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
