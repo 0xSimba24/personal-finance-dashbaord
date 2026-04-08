@@ -1,9 +1,9 @@
 // Price fetching service for crypto (CoinGecko + Hyperliquid), mutual funds (mfapi.in), and equities (Google Sheets)
 
-// ── Exchange Rates (free, no API key) ──
+// ── Exchange Rates (ExchangeRate-API, free, no key, updates every few hours) ──
 export async function fetchExchangeRates() {
   try {
-    const res = await fetch("https://api.frankfurter.dev/v1/latest?base=EUR&symbols=INR,USD");
+    const res = await fetch("https://api.exchangerate-api.com/v4/latest/EUR");
     if (!res.ok) throw new Error(`Exchange rate ${res.status}`);
     const data = await res.json();
     return { eurToInr: data.rates?.INR || null, eurToUsd: data.rates?.USD || null };
