@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { fetchCryptoPrices, fetchHyperliquidPrices, fetchAllMFNavs, fetchEquityPricesFromSheet, generateSheetTemplate } from "./priceService.js";
+import PortfolioChart, { MultiLineChart } from "./PortfolioChart.jsx";
 
 const uid = () => Math.random().toString(36).slice(2, 9);
 const STORE_KEY = "fin-dashboard-v3";
@@ -64,6 +65,7 @@ const defaultData = {
     { id: uid(), name: "Personal Loan", totalAmount: 0, interestRate: 4.7, monthlyEMI: 0, startDate: "", tenureMonths: 0, currency: "EUR" },
   ],
   snapshots: [],
+  priceHistory: [],
 };
 
 // ── Storage helpers (localStorage) ──
@@ -435,6 +437,60 @@ export default function App() {
       }
     } catch (e) { results.push("Equities: failed"); }
 
+    // Save price history point
+    const histRate = updated.settings.eurToInr;
+    const histEntry = { date: new Date().toISOString(), items: {} };
+
+    // Category totals
+    let mfTotal = 0, eqTotal = 0, cashTotal = 0, cryptoTotal = 0, reTotal = 0, esopTotal = 0;
+
+    updated.mutualFunds.forEach(f => {
+      const val = toEur(f.units * f.currentPrice, f.currency, histRate);
+      mfTotal += val;
+      if (f.units > 0) histEntry.items[`mf_${f.id}`] = val;
+    });
+    (updated.equityAccounts || []).forEach(acct => {
+      (acct.stocks || []).forEach(st => {
+        const val = toEur(st.quantity * st.currentPrice, st.currency, histRate);
+        eqTotal += val;
+        if (st.quantity > 0) histEntry.items[`eq_${st.id}`] = val;
+      });
+    });
+    updated.cashSavings.forEach(c => {
+      const val = toEur(c.amount, c.currency, histRate);
+      cashTotal += val;
+      histEntry.items[`cash_${c.id}`] = val;
+    });
+    updated.crypto.forEach(c => {
+      const val = toEur(c.quantity * c.currentPrice, "USD", histRate);
+      cryptoTotal += val;
+      if (c.quantity > 0) histEntry.items[`crypto_${c.id}`] = val;
+    });
+    (updated.realEstate || []).forEach(p => {
+      const val = toEur(p.value, p.currency, histRate);
+      reTotal += val;
+      histEntry.items[`re_${p.id}`] = val;
+    });
+    updated.esops.forEach(e => {
+      const vv = Math.max(0, e.vestedQty * (e.currentPrice - e.strikePrice));
+      const uv = Math.max(0, e.unvestedQty * (e.currentPrice - e.strikePrice));
+      const val = toEur(vv + uv, e.currency, histRate);
+      esopTotal += val;
+      histEntry.items[`esop_${e.id}`] = val;
+    });
+
+    histEntry.mfTotal = mfTotal;
+    histEntry.eqTotal = eqTotal;
+    histEntry.cashTotal = cashTotal;
+    histEntry.cryptoTotal = cryptoTotal;
+    histEntry.reTotal = reTotal;
+    histEntry.esopTotal = esopTotal;
+    histEntry.netWorth = mfTotal + eqTotal + cashTotal + cryptoTotal + reTotal + esopTotal;
+
+    // Keep max 365 entries to avoid localStorage bloat
+    const history = [...(updated.priceHistory || []), histEntry].slice(-365);
+    updated.priceHistory = history;
+
     save(updated);
     setRefreshMsg(results.join(" · "));
     setRefreshing(false);
@@ -766,6 +822,16 @@ export default function App() {
 
         {subTab === "mf" && <div style={s.card}>
           <div style={s.flex}><div style={s.h2}>Mutual Funds</div><button style={s.btn} onClick={() => addItem("mutualFunds", { name: "New Fund", units: 0, costPrice: 0, currentPrice: 0, currency: "INR", liquid: true })}>+ Add</button></div>
+          {(data.priceHistory || []).length >= 2 && <div style={{ marginBottom: "14px" }}>
+            <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: h.mfTotal || 0 }))} title="Mutual Funds Total" />
+            {data.mutualFunds.filter(f => f.units > 0).length > 1 && <div style={{ marginTop: "14px" }}>
+              <MultiLineChart
+                history={data.priceHistory}
+                items={data.mutualFunds.filter(f => f.units > 0).map(f => ({ key: `mf_${f.id}`, label: f.name }))}
+                title="Individual Funds"
+              />
+            </div>}
+          </div>}
           <div style={{ overflowX: "auto" }}><table style={s.table}><thead><tr><th style={s.th}>Fund</th><th style={s.th}>Units</th><th style={s.th}>Cost/Unit</th><th style={s.th}>Current</th><th style={s.th}>Invested</th><th style={s.th}>Value</th><th style={s.th}>P/L</th><th style={s.th}>Liq</th><th style={s.th}></th></tr></thead>
           <tbody>{data.mutualFunds.map(f => {
             const inv = f.units * f.costPrice, cur = f.units * f.currentPrice, pl = cur - inv, plP = inv > 0 ? (pl / inv * 100) : 0;
@@ -775,6 +841,9 @@ export default function App() {
         </div>}
 
         {subTab === "eq" && <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+          {(data.priceHistory || []).length >= 2 && <div style={s.card}>
+            <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: h.eqTotal || 0 }))} title="Equity Total" color="#8b5cf6" />
+          </div>}
           <div style={s.flex}><div style={s.h2}>Equity Accounts</div><button style={s.btn} onClick={() => addItem("equityAccounts", { name: "New Account", stocks: [] })}>+ Add Account</button></div>
           {(data.equityAccounts || []).map(acct => (
             <div key={acct.id} style={s.card}>
@@ -803,6 +872,9 @@ export default function App() {
 
         {subTab === "cash" && <div style={s.card}>
           <div style={s.flex}><div style={s.h2}>Cash & Savings</div><button style={s.btn} onClick={() => addItem("cashSavings", { name: "New", type: "Bank", amount: 0, currency: "EUR", liquid: true })}>+ Add</button></div>
+          {(data.priceHistory || []).length >= 2 && <div style={{ marginBottom: "14px" }}>
+            <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: h.cashTotal || 0 }))} title="Cash & Savings Total" color="#22c997" />
+          </div>}
           <table style={s.table}><thead><tr><th style={s.th}>Account</th><th style={s.th}>Type</th><th style={s.th}>Amount</th><th style={s.th}>Curr</th><th style={s.th}>EUR</th><th style={s.th}>Liq</th><th style={s.th}></th></tr></thead>
           <tbody>{data.cashSavings.map(c => <tr key={c.id}><td style={s.td}><ECell value={c.name} onChange={v => updateItem("cashSavings", c.id, "name", v)} /></td><td style={s.td}><select style={s.select} value={c.type} onChange={e => updateItem("cashSavings", c.id, "type", e.target.value)}><option>Bank</option><option>FD</option><option>RD</option><option>Other</option></select></td><td style={s.td}><ECell value={c.amount} type="number" onChange={v => updateItem("cashSavings", c.id, "amount", v)} /></td><td style={s.td}><CurrSelect value={c.currency} onChange={v => updateItem("cashSavings", c.id, "currency", v)} /></td><td style={s.td}>{fmt(toEur(c.amount, c.currency, rate))}</td><td style={s.td}><button style={s.liqBadge(c.liquid)} onClick={() => updateItem("cashSavings", c.id, "liquid", !c.liquid)}>{c.liquid ? "LIQ" : "ILLIQ"}</button></td><td style={s.td}><button style={s.btnDanger} onClick={() => removeItem("cashSavings", c.id)}>×</button></td></tr>)}</tbody></table>
           <div style={{ marginTop: "8px", fontSize: "13px", fontWeight: 600, textAlign: "right" }}>Total: {fmtBoth(calc.cashValue.total, rate)}</div>
@@ -810,6 +882,16 @@ export default function App() {
 
         {subTab === "crypto" && <div style={s.card}>
           <div style={s.flex}><div style={s.h2}>Crypto</div><button style={s.btn} onClick={() => addItem("crypto", { name: "Token", quantity: 0, costPrice: 0, currentPrice: 0, currency: "USD", liquid: true })}>+ Add</button></div>
+          {(data.priceHistory || []).length >= 2 && <div style={{ marginBottom: "14px" }}>
+            <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: h.cryptoTotal || 0 }))} title="Crypto Total" color="#f59e0b" />
+            {data.crypto.filter(c => c.quantity > 0).length > 1 && <div style={{ marginTop: "14px" }}>
+              <MultiLineChart
+                history={data.priceHistory}
+                items={data.crypto.filter(c => c.quantity > 0).map(c => ({ key: `crypto_${c.id}`, label: c.name }))}
+                title="Individual Tokens"
+              />
+            </div>}
+          </div>}
           <div style={{ overflowX: "auto" }}><table style={s.table}><thead><tr><th style={s.th}>Token</th><th style={s.th}>Qty</th><th style={s.th}>Cost</th><th style={s.th}>Current</th><th style={s.th}>Invested</th><th style={s.th}>Value</th><th style={s.th}>P/L</th><th style={s.th}>Liq</th><th style={s.th}></th></tr></thead>
           <tbody>{data.crypto.map(c => {
             const inv = c.quantity * c.costPrice, cur = c.quantity * c.currentPrice, pl = cur - inv, plP = inv > 0 ? (pl / inv * 100) : 0;
@@ -820,6 +902,9 @@ export default function App() {
 
         {subTab === "re" && <div style={s.card}>
           <div style={s.flex}><div style={s.h2}>Real Estate</div><button style={s.btn} onClick={() => update("realEstate", [...(data.realEstate || []), { id: uid(), name: "Property", value: 0, currency: "INR", liquid: false }])}>+ Add</button></div>
+          {(data.priceHistory || []).length >= 2 && (data.priceHistory || []).some(h => h.reTotal > 0) && <div style={{ marginBottom: "14px" }}>
+            <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: h.reTotal || 0 }))} title="Real Estate Total" color="#3b82f6" />
+          </div>}
           {(!data.realEstate || data.realEstate.length === 0) ? <div style={{ fontSize: "12px", color: colors.textDim, padding: "12px 0" }}>No real estate</div> :
           <table style={s.table}><thead><tr><th style={s.th}>Name</th><th style={s.th}>Value</th><th style={s.th}>Curr</th><th style={s.th}>EUR</th><th style={s.th}>Liq</th><th style={s.th}></th></tr></thead>
           <tbody>{data.realEstate.map(p => <tr key={p.id}><td style={s.td}><ECell value={p.name} onChange={v => update("realEstate", data.realEstate.map(i => i.id === p.id ? { ...i, name: v } : i))} /></td><td style={s.td}><ECell value={p.value} type="number" onChange={v => update("realEstate", data.realEstate.map(i => i.id === p.id ? { ...i, value: v } : i))} /></td><td style={s.td}><CurrSelect value={p.currency} onChange={v => update("realEstate", data.realEstate.map(i => i.id === p.id ? { ...i, currency: v } : i))} /></td><td style={s.td}>{fmt(toEur(p.value, p.currency, rate))}</td><td style={s.td}><button style={s.liqBadge(p.liquid)} onClick={() => update("realEstate", data.realEstate.map(i => i.id === p.id ? { ...i, liquid: !i.liquid } : i))}>{p.liquid ? "LIQ" : "ILLIQ"}</button></td><td style={s.td}><button style={s.btnDanger} onClick={() => update("realEstate", data.realEstate.filter(i => i.id !== p.id))}>×</button></td></tr>)}</tbody></table>}
@@ -827,6 +912,9 @@ export default function App() {
 
         {subTab === "esop" && <div style={s.card}>
           <div style={s.flex}><div style={s.h2}>ESOPs</div><button style={s.btn} onClick={() => addItem("esops", { company: "Company", strikePrice: 0, quantity: 0, currentPrice: 0, vestedQty: 0, unvestedQty: 0, currency: "EUR", liquid: false })}>+ Add</button></div>
+          {(data.priceHistory || []).length >= 2 && (data.priceHistory || []).some(h => h.esopTotal > 0) && <div style={{ marginBottom: "14px" }}>
+            <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: h.esopTotal || 0 }))} title="ESOPs Total" color="#ec4899" />
+          </div>}
           <div style={{ overflowX: "auto" }}><table style={s.table}><thead><tr><th style={s.th}>Company</th><th style={s.th}>Strike</th><th style={s.th}>Current</th><th style={s.th}>Total</th><th style={s.th}>Vested</th><th style={s.th}>Unvested</th><th style={s.th}>Vested Val</th><th style={s.th}>Unvested Val</th><th style={s.th}>Liq</th><th style={s.th}></th></tr></thead>
           <tbody>{data.esops.map(e => {
             const vv = Math.max(0, e.vestedQty * (e.currentPrice - e.strikePrice)), uv = Math.max(0, e.unvestedQty * (e.currentPrice - e.strikePrice));
