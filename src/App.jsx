@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { fetchCryptoPrices, fetchHyperliquidPrices, fetchAllMFNavs, fetchEquityPricesFromSheet, generateSheetTemplate } from "./priceService.js";
+import { fetchCryptoPrices, fetchHyperliquidPrices, fetchAllMFNavs, fetchEquityPricesFromSheet, generateSheetTemplate, fetchExchangeRates } from "./priceService.js";
 import PortfolioChart, { MultiLineChart } from "./PortfolioChart.jsx";
 
 const uid = () => Math.random().toString(36).slice(2, 9);
 const STORE_KEY = "fin-dashboard-v3";
 
 const defaultData = {
-  settings: { eurToInr: 91.5, currentPhase: 2, lastUpdated: null, googleSheetUrl: "" },
+  settings: { eurToInr: 91.5, eurToUsd: 1.08, currentPhase: 2, lastUpdated: null, googleSheetUrl: "" },
   income: [
     { id: uid(), name: "Net Salary", amount: 4200, currency: "EUR", frequency: "monthly" },
   ],
@@ -80,10 +80,10 @@ const storage = {
   },
 };
 
-const toEur = (amount, currency, rate) => {
+const toEur = (amount, currency, rate, usdRate = 1.08) => {
   if (currency === "EUR") return amount;
   if (currency === "INR") return amount / rate;
-  if (currency === "USD") return amount / 1.08;
+  if (currency === "USD") return amount / usdRate;
   return amount;
 };
 const fmt = (n, c = "EUR") => {
@@ -269,39 +269,41 @@ export default function App() {
   const calc = useMemo(() => {
     if (!data) return {};
     const rate = data.settings.eurToInr;
-    const totalIncomeEur = data.income.reduce((s, i) => s + toEur(i.frequency === "annual" ? i.amount / 12 : i.amount, i.currency, rate), 0);
-    const totalFixedEur = data.fixedExpenses.reduce((s, e) => s + toEur(e.frequency === "annual" ? e.amount / 12 : e.amount, e.currency, rate), 0);
-    const totalSipsEur = data.sips.reduce((s, i) => s + toEur(i.amount, i.currency, rate), 0);
+    const usdRate = data.settings.eurToUsd || 1.08;
+    const eur = (amount, currency) => toEur(amount, currency, rate, usdRate);
+    const totalIncomeEur = data.income.reduce((s, i) => s + eur(i.frequency === "annual" ? i.amount / 12 : i.amount, i.currency), 0);
+    const totalFixedEur = data.fixedExpenses.reduce((s, e) => s + eur(e.frequency === "annual" ? e.amount / 12 : e.amount, e.currency), 0);
+    const totalSipsEur = data.sips.reduce((s, i) => s + eur(i.amount, i.currency), 0);
     const surplus = totalIncomeEur - totalFixedEur - totalSipsEur;
-    const totalAllocEur = data.surplusAllocation.filter(a => a.phase === data.settings.currentPhase).reduce((s, a) => s + toEur(a.amount, a.currency, rate), 0);
+    const totalAllocEur = data.surplusAllocation.filter(a => a.phase === data.settings.currentPhase).reduce((s, a) => s + eur(a.amount, a.currency), 0);
     const unallocated = surplus - totalAllocEur;
 
     const mfValue = data.mutualFunds.reduce((s, f) => {
       const val = f.units * f.currentPrice;
-      return { total: s.total + toEur(val, f.currency, rate), liquid: s.liquid + (f.liquid ? toEur(val, f.currency, rate) : 0) };
+      return { total: s.total + eur(val, f.currency), liquid: s.liquid + (f.liquid ? eur(val, f.currency) : 0) };
     }, { total: 0, liquid: 0 });
 
     const allStocks = (data.equityAccounts || []).flatMap(a => a.stocks || []);
     const eqValue = allStocks.reduce((s, e) => {
       const val = e.quantity * e.currentPrice;
-      return { total: s.total + toEur(val, e.currency, rate), liquid: s.liquid + (e.liquid ? toEur(val, e.currency, rate) : 0) };
+      return { total: s.total + eur(val, e.currency), liquid: s.liquid + (e.liquid ? eur(val, e.currency) : 0) };
     }, { total: 0, liquid: 0 });
 
-    const cashValue = data.cashSavings.reduce((s, c) => ({ total: s.total + toEur(c.amount, c.currency, rate), liquid: s.liquid + (c.liquid ? toEur(c.amount, c.currency, rate) : 0) }), { total: 0, liquid: 0 });
+    const cashValue = data.cashSavings.reduce((s, c) => ({ total: s.total + eur(c.amount, c.currency), liquid: s.liquid + (c.liquid ? eur(c.amount, c.currency) : 0) }), { total: 0, liquid: 0 });
     const cryptoValue = data.crypto.reduce((s, c) => {
       const val = c.quantity * c.currentPrice;
-      return { total: s.total + toEur(val, c.currency, rate), liquid: s.liquid + (c.liquid ? toEur(val, c.currency, rate) : 0) };
+      return { total: s.total + eur(val, c.currency), liquid: s.liquid + (c.liquid ? eur(val, c.currency) : 0) };
     }, { total: 0, liquid: 0 });
-    const propValue = (data.realEstate || []).reduce((s, p) => ({ total: s.total + toEur(p.value, p.currency, rate), liquid: s.liquid + (p.liquid ? toEur(p.value, p.currency, rate) : 0) }), { total: 0, liquid: 0 });
+    const propValue = (data.realEstate || []).reduce((s, p) => ({ total: s.total + eur(p.value, p.currency), liquid: s.liquid + (p.liquid ? eur(p.value, p.currency) : 0) }), { total: 0, liquid: 0 });
     const esopValue = data.esops.reduce((s, e) => {
       const vv = Math.max(0, e.vestedQty * (e.currentPrice - e.strikePrice));
       const uv = Math.max(0, e.unvestedQty * (e.currentPrice - e.strikePrice));
-      return { total: s.total + toEur(vv + uv, e.currency, rate), liquid: s.liquid + (e.liquid ? toEur(vv, e.currency, rate) : 0) };
+      return { total: s.total + eur(vv + uv, e.currency), liquid: s.liquid + (e.liquid ? eur(vv, e.currency) : 0) };
     }, { total: 0, liquid: 0 });
 
     const totalLiabEur = data.liabilities.reduce((s, l) => {
       const amort = calcAmortization(l.totalAmount, l.interestRate, l.tenureMonths, getMonthsElapsed(l.startDate));
-      return s + toEur(amort.remainingPrincipal, l.currency, rate);
+      return s + eur(amort.remainingPrincipal, l.currency);
     }, 0);
 
     const grossAssets = mfValue.total + eqValue.total + cashValue.total + cryptoValue.total + propValue.total + esopValue.total;
@@ -365,9 +367,18 @@ export default function App() {
   const refreshPrices = useCallback(async () => {
     if (!data || refreshing) return;
     setRefreshing(true);
-    setRefreshMsg("Fetching prices...");
+    setRefreshMsg("Fetching exchange rates...");
     let updated = { ...data };
     let results = [];
+
+    // 0. Exchange rates
+    try {
+      const rates = await fetchExchangeRates();
+      if (rates.eurToInr) {
+        updated.settings = { ...updated.settings, eurToInr: rates.eurToInr, eurToUsd: rates.eurToUsd || updated.settings.eurToUsd };
+        results.push(`EUR/INR: ${rates.eurToInr.toFixed(2)}`);
+      }
+    } catch (e) { results.push("FX: failed"); }
 
     // 1. Crypto (CoinGecko + Hyperliquid)
     try {
@@ -439,42 +450,43 @@ export default function App() {
 
     // Save price history point
     const histRate = updated.settings.eurToInr;
+    const histUsdRate = updated.settings.eurToUsd || 1.08;
     const histEntry = { date: new Date().toISOString(), items: {} };
 
     // Category totals
     let mfTotal = 0, eqTotal = 0, cashTotal = 0, cryptoTotal = 0, reTotal = 0, esopTotal = 0;
 
     updated.mutualFunds.forEach(f => {
-      const val = toEur(f.units * f.currentPrice, f.currency, histRate);
+      const val = toEur(f.units * f.currentPrice, f.currency, histRate, histUsdRate);
       mfTotal += val;
       if (f.units > 0) histEntry.items[`mf_${f.id}`] = val;
     });
     (updated.equityAccounts || []).forEach(acct => {
       (acct.stocks || []).forEach(st => {
-        const val = toEur(st.quantity * st.currentPrice, st.currency, histRate);
+        const val = toEur(st.quantity * st.currentPrice, st.currency, histRate, histUsdRate);
         eqTotal += val;
         if (st.quantity > 0) histEntry.items[`eq_${st.id}`] = val;
       });
     });
     updated.cashSavings.forEach(c => {
-      const val = toEur(c.amount, c.currency, histRate);
+      const val = toEur(c.amount, c.currency, histRate, histUsdRate);
       cashTotal += val;
       histEntry.items[`cash_${c.id}`] = val;
     });
     updated.crypto.forEach(c => {
-      const val = toEur(c.quantity * c.currentPrice, "USD", histRate);
+      const val = toEur(c.quantity * c.currentPrice, "USD", histRate, histUsdRate);
       cryptoTotal += val;
       if (c.quantity > 0) histEntry.items[`crypto_${c.id}`] = val;
     });
     (updated.realEstate || []).forEach(p => {
-      const val = toEur(p.value, p.currency, histRate);
+      const val = toEur(p.value, p.currency, histRate, histUsdRate);
       reTotal += val;
       histEntry.items[`re_${p.id}`] = val;
     });
     updated.esops.forEach(e => {
       const vv = Math.max(0, e.vestedQty * (e.currentPrice - e.strikePrice));
       const uv = Math.max(0, e.unvestedQty * (e.currentPrice - e.strikePrice));
-      const val = toEur(vv + uv, e.currency, histRate);
+      const val = toEur(vv + uv, e.currency, histRate, histUsdRate);
       esopTotal += val;
       histEntry.items[`esop_${e.id}`] = val;
     });
@@ -489,7 +501,7 @@ export default function App() {
     let histLiab = 0;
     updated.liabilities.forEach(l => {
       const amort = calcAmortization(l.totalAmount, l.interestRate, l.tenureMonths, getMonthsElapsed(l.startDate));
-      histLiab += toEur(amort.remainingPrincipal, l.currency, histRate);
+      histLiab += toEur(amort.remainingPrincipal, l.currency, histRate, histUsdRate);
     });
     histEntry.liabilities = histLiab;
     histEntry.grossAssets = mfTotal + eqTotal + cashTotal + cryptoTotal + reTotal + esopTotal;
@@ -534,6 +546,10 @@ export default function App() {
               <span style={{ fontSize: "12px", color: colors.textDim }}>1 EUR =</span>
               <ECell value={data.settings.eurToInr} type="number" onChange={v => update("settings", { ...data.settings, eurToInr: v })} />
               <span style={{ fontSize: "12px", color: colors.textDim }}>INR</span>
+              <button style={{ ...s.btnOutline, padding: "3px 8px", fontSize: "9px" }} onClick={async () => {
+                const rates = await fetchExchangeRates();
+                if (rates.eurToInr) update("settings", { ...data.settings, eurToInr: rates.eurToInr, eurToUsd: rates.eurToUsd || data.settings.eurToUsd });
+              }}>↻ Live</button>
             </div>
           </div>
         </div>

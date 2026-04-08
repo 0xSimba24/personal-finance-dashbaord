@@ -1,5 +1,18 @@
 // Price fetching service for crypto (CoinGecko + Hyperliquid), mutual funds (mfapi.in), and equities (Google Sheets)
 
+// ── Exchange Rates (free, no API key) ──
+export async function fetchExchangeRates() {
+  try {
+    const res = await fetch("https://api.frankfurter.dev/v1/latest?base=EUR&symbols=INR,USD");
+    if (!res.ok) throw new Error(`Exchange rate ${res.status}`);
+    const data = await res.json();
+    return { eurToInr: data.rates?.INR || null, eurToUsd: data.rates?.USD || null };
+  } catch (e) {
+    console.error("Exchange rate fetch failed:", e);
+    return { eurToInr: null, eurToUsd: null };
+  }
+}
+
 // ── Hyperliquid (pre-market & spot prices) ──
 export async function fetchHyperliquidPrices(tickers) {
   // tickers = ["MEGAETH", "HYPE", ...]
