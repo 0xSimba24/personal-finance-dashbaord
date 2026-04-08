@@ -530,6 +530,9 @@ export default function App() {
           </div>
         </div>
       </div>
+      {(data.priceHistory || []).length >= 2 && <div style={s.card}>
+        <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: h.netWorth || 0 }))} title="Net Worth" height={160} />
+      </div>}
       <div style={s.grid3}>
         <div style={s.card}><div style={s.h3}>Liquid Net Worth</div><div style={{ fontSize: "20px", fontWeight: 700, color: colors.green }}>{fmt(calc.liquidNW)}</div><div style={{ fontSize: "11px", color: colors.textDim }}>{fmt(calc.liquidNW * rate, "INR")}</div></div>
         <div style={s.card}><div style={s.h3}>Illiquid Net Worth</div><div style={{ fontSize: "20px", fontWeight: 700, color: colors.yellow }}>{fmt(calc.illiquidNW)}</div><div style={{ fontSize: "11px", color: colors.textDim }}>{fmt(calc.illiquidNW * rate, "INR")}</div></div>
@@ -991,21 +994,25 @@ export default function App() {
   // ─── HISTORY ───
   const renderHistory = () => {
     const snaps = data.snapshots;
-    const maxNW = snaps.length > 0 ? Math.max(...snaps.map(s => Math.max(s.grossAssets, 1))) : 1;
     return (
       <div style={s.card}>
         <div style={s.flex}><div style={s.h2}>Net Worth Over Time</div><button style={s.btn} onClick={takeSnapshot}>📸 Save Snapshot</button></div>
         {snaps.length === 0 ? <div style={{ padding: "40px 0", textAlign: "center", color: colors.textDim, fontSize: "13px" }}>No snapshots yet.</div> : <>
-          <div style={{ display: "flex", alignItems: "flex-end", gap: "4px", height: "200px", padding: "20px 0 0 0" }}>
-            {snaps.map((snap, i) => {
-              const h = (snap.netWorth / maxNW) * 180;
-              return <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: "4px" }}>
-                <div style={{ fontSize: "9px", color: colors.textDim, whiteSpace: "nowrap" }}>{fmt(snap.netWorth)}</div>
-                <div style={{ width: "100%", maxWidth: "40px", height: `${Math.max(4, h)}px`, background: `linear-gradient(to top, ${colors.accent}, ${colors.accentDim})`, borderRadius: "4px 4px 0 0" }} />
-                <div style={{ fontSize: "9px", color: colors.textMuted, whiteSpace: "nowrap" }}>{snap.date.slice(5)}</div>
-              </div>;
-            })}
-          </div>
+          <PortfolioChart
+            history={snaps.map(s => ({ date: s.date, value: s.netWorth }))}
+            title="Net Worth"
+          />
+          {snaps.length >= 2 && <div style={{ marginTop: "20px" }}>
+            <MultiLineChart
+              history={snaps.map(s => ({ date: s.date, items: { liquid: s.liquidNW, illiquid: s.illiquidNW, liabilities: s.liabilities } }))}
+              items={[
+                { key: "liquid", label: "Liquid NW" },
+                { key: "illiquid", label: "Illiquid NW" },
+                { key: "liabilities", label: "Liabilities" },
+              ]}
+              title="Breakdown"
+            />
+          </div>}
           <table style={{ ...s.table, marginTop: "16px" }}><thead><tr><th style={s.th}>Date</th><th style={s.th}>Net Worth</th><th style={s.th}>Liquid NW</th><th style={s.th}>Illiquid NW</th><th style={s.th}>Liabilities</th><th style={s.th}>Phase</th><th style={s.th}></th></tr></thead>
           <tbody>{snaps.slice().reverse().map((snap, i) => <tr key={i}><td style={s.td}>{snap.date}</td><td style={s.td}>{fmt(snap.netWorth)}</td><td style={{ ...s.td, color: colors.green }}>{fmt(snap.liquidNW)}</td><td style={{ ...s.td, color: colors.yellow }}>{fmt(snap.illiquidNW)}</td><td style={{ ...s.td, color: colors.red }}>{fmt(snap.liabilities)}</td><td style={s.td}>{snap.phase}</td><td style={s.td}><button style={s.btnDanger} onClick={() => { const n = [...data.snapshots]; n.splice(data.snapshots.length - 1 - i, 1); update("snapshots", n); }}>×</button></td></tr>)}</tbody></table>
         </>}
