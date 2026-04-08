@@ -76,7 +76,7 @@ export default function PortfolioChart({ history, title, color = colors.accent, 
         </div>
       </div>
       <ResponsiveContainer width="100%" height={height}>
-        <AreaChart data={chartData} margin={{ top: 5, right: 5, bottom: 5, left: 5 }}>
+        <AreaChart data={chartData} margin={{ top: 5, right: 5, bottom: 5, left: 15 }}>
           <defs>
             <linearGradient id={`grad-${title}`} x1="0" y1="0" x2="0" y2="1">
               <stop offset="5%" stopColor={lineColor} stopOpacity={0.2} />
@@ -84,7 +84,7 @@ export default function PortfolioChart({ history, title, color = colors.accent, 
             </linearGradient>
           </defs>
           <XAxis dataKey="date" tick={{ fontSize: 9, fill: colors.textMuted }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
-          <YAxis hide domain={["auto", "auto"]} />
+          <YAxis tick={{ fontSize: 9, fill: colors.textMuted }} axisLine={false} tickLine={false} width={55} tickFormatter={v => v >= 1000 ? `${(v/1000).toFixed(0)}k` : v.toFixed(0)} domain={["auto", "auto"]} />
           <Tooltip
             contentStyle={{ background: colors.card, border: `1px solid ${colors.border}`, borderRadius: "6px", fontSize: "11px", fontFamily: "inherit" }}
             labelStyle={{ color: colors.textDim }}
@@ -150,9 +150,9 @@ export function MultiLineChart({ history, items, title, currency = "EUR", height
         ))}
       </div>
       <ResponsiveContainer width="100%" height={height}>
-        <LineChart data={chartData} margin={{ top: 5, right: 5, bottom: 5, left: 5 }}>
+        <LineChart data={chartData} margin={{ top: 5, right: 5, bottom: 5, left: 15 }}>
           <XAxis dataKey="date" tick={{ fontSize: 9, fill: colors.textMuted }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
-          <YAxis hide domain={["auto", "auto"]} />
+          <YAxis tick={{ fontSize: 9, fill: colors.textMuted }} axisLine={false} tickLine={false} width={55} tickFormatter={v => v >= 1000 ? `${(v/1000).toFixed(0)}k` : v.toFixed(0)} domain={["auto", "auto"]} />
           <Tooltip
             contentStyle={{ background: colors.card, border: `1px solid ${colors.border}`, borderRadius: "6px", fontSize: "11px", fontFamily: "inherit" }}
             labelStyle={{ color: colors.textDim }}
