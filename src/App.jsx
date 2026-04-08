@@ -308,7 +308,7 @@ export default function App() {
     const liquidAssets = mfValue.liquid + eqValue.liquid + cashValue.liquid + cryptoValue.liquid + propValue.liquid + esopValue.liquid;
     const illiquidAssets = grossAssets - liquidAssets;
     const netWorth = grossAssets - totalLiabEur;
-    const liquidNW = liquidAssets - totalLiabEur;
+    const liquidNW = liquidAssets;
     const illiquidNW = illiquidAssets;
 
     return { rate, totalIncomeEur, totalFixedEur, totalSipsEur, surplus, totalAllocEur, unallocated, mfValue, eqValue, cashValue, cryptoValue, propValue, esopValue, grossAssets, liquidAssets, illiquidAssets, totalLiabEur, netWorth, liquidNW, illiquidNW };
@@ -534,8 +534,8 @@ export default function App() {
         <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: h.netWorth || 0 }))} title="Net Worth" height={160} />
       </div>}
       <div style={s.grid3}>
-        <div style={s.card}><div style={s.h3}>Liquid Net Worth</div><div style={{ fontSize: "20px", fontWeight: 700, color: colors.green }}>{fmt(calc.liquidNW)}</div><div style={{ fontSize: "11px", color: colors.textDim }}>{fmt(calc.liquidNW * rate, "INR")}</div></div>
-        <div style={s.card}><div style={s.h3}>Illiquid Net Worth</div><div style={{ fontSize: "20px", fontWeight: 700, color: colors.yellow }}>{fmt(calc.illiquidNW)}</div><div style={{ fontSize: "11px", color: colors.textDim }}>{fmt(calc.illiquidNW * rate, "INR")}</div></div>
+        <div style={s.card}><div style={s.h3}>Liquid Assets</div><div style={{ fontSize: "20px", fontWeight: 700, color: colors.green }}>{fmt(calc.liquidNW)}</div><div style={{ fontSize: "11px", color: colors.textDim }}>{fmt(calc.liquidNW * rate, "INR")}</div></div>
+        <div style={s.card}><div style={s.h3}>Illiquid Assets</div><div style={{ fontSize: "20px", fontWeight: 700, color: colors.yellow }}>{fmt(calc.illiquidNW)}</div><div style={{ fontSize: "11px", color: colors.textDim }}>{fmt(calc.illiquidNW * rate, "INR")}</div></div>
         <div style={s.card}><div style={s.h3}>Total Liabilities</div><div style={{ fontSize: "20px", fontWeight: 700, color: colors.red }}>{fmt(calc.totalLiabEur)}</div><div style={{ fontSize: "11px", color: colors.textDim }}>{fmt(calc.totalLiabEur * rate, "INR")}</div></div>
       </div>
 
@@ -1006,14 +1006,14 @@ export default function App() {
             <MultiLineChart
               history={snaps.map(s => ({ date: s.date, items: { liquid: s.liquidNW, illiquid: s.illiquidNW, liabilities: s.liabilities } }))}
               items={[
-                { key: "liquid", label: "Liquid NW" },
-                { key: "illiquid", label: "Illiquid NW" },
+                { key: "liquid", label: "Liquid Assets" },
+                { key: "illiquid", label: "Illiquid Assets" },
                 { key: "liabilities", label: "Liabilities" },
               ]}
               title="Breakdown"
             />
           </div>}
-          <table style={{ ...s.table, marginTop: "16px" }}><thead><tr><th style={s.th}>Date</th><th style={s.th}>Net Worth</th><th style={s.th}>Liquid NW</th><th style={s.th}>Illiquid NW</th><th style={s.th}>Liabilities</th><th style={s.th}>Phase</th><th style={s.th}></th></tr></thead>
+          <table style={{ ...s.table, marginTop: "16px" }}><thead><tr><th style={s.th}>Date</th><th style={s.th}>Net Worth</th><th style={s.th}>Liquid</th><th style={s.th}>Illiquid</th><th style={s.th}>Liabilities</th><th style={s.th}>Phase</th><th style={s.th}></th></tr></thead>
           <tbody>{snaps.slice().reverse().map((snap, i) => <tr key={i}><td style={s.td}>{snap.date}</td><td style={s.td}>{fmt(snap.netWorth)}</td><td style={{ ...s.td, color: colors.green }}>{fmt(snap.liquidNW)}</td><td style={{ ...s.td, color: colors.yellow }}>{fmt(snap.illiquidNW)}</td><td style={{ ...s.td, color: colors.red }}>{fmt(snap.liabilities)}</td><td style={s.td}>{snap.phase}</td><td style={s.td}><button style={s.btnDanger} onClick={() => { const n = [...data.snapshots]; n.splice(data.snapshots.length - 1 - i, 1); update("snapshots", n); }}>×</button></td></tr>)}</tbody></table>
         </>}
       </div>
