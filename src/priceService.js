@@ -1,14 +1,26 @@
 // Price fetching service for crypto (CoinGecko + Hyperliquid), mutual funds (mfapi.in), and equities (Google Sheets)
 
-// ── Exchange Rates (ExchangeRate-API, free, no key, updates every few hours) ──
+// ── Exchange Rates (fxratesapi.com — free, real-time, no key) ──
 export async function fetchExchangeRates() {
+  // Try primary source
+  try {
+    const res = await fetch("https://api.fxratesapi.com/latest?base=EUR&currencies=INR,USD&resolution=1m&amount=1&places=4");
+    if (!res.ok) throw new Error(`fxratesapi ${res.status}`);
+    const data = await res.json();
+    if (data.rates?.INR) {
+      return { eurToInr: data.rates.INR, eurToUsd: data.rates.USD || null };
+    }
+  } catch (e) {
+    console.warn("fxratesapi failed, trying fallback:", e);
+  }
+  // Fallback to exchangerate-api
   try {
     const res = await fetch("https://api.exchangerate-api.com/v4/latest/EUR");
-    if (!res.ok) throw new Error(`Exchange rate ${res.status}`);
+    if (!res.ok) throw new Error(`exchangerate-api ${res.status}`);
     const data = await res.json();
     return { eurToInr: data.rates?.INR || null, eurToUsd: data.rates?.USD || null };
   } catch (e) {
-    console.error("Exchange rate fetch failed:", e);
+    console.error("All exchange rate sources failed:", e);
     return { eurToInr: null, eurToUsd: null };
   }
 }
