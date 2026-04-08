@@ -884,13 +884,6 @@ export default function App() {
           <div style={s.flex}><div style={s.h2}>Crypto</div><button style={s.btn} onClick={() => addItem("crypto", { name: "Token", quantity: 0, costPrice: 0, currentPrice: 0, currency: "USD", liquid: true })}>+ Add</button></div>
           {(data.priceHistory || []).length >= 2 && <div style={{ marginBottom: "14px" }}>
             <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: h.cryptoTotal || 0 }))} title="Crypto Total" color="#f59e0b" />
-            {data.crypto.filter(c => c.quantity > 0).length > 1 && <div style={{ marginTop: "14px" }}>
-              <MultiLineChart
-                history={data.priceHistory}
-                items={data.crypto.filter(c => c.quantity > 0).map(c => ({ key: `crypto_${c.id}`, label: c.name }))}
-                title="Individual Tokens"
-              />
-            </div>}
           </div>}
           <div style={{ overflowX: "auto" }}><table style={s.table}><thead><tr><th style={s.th}>Token</th><th style={s.th}>Qty</th><th style={s.th}>Cost</th><th style={s.th}>Current</th><th style={s.th}>Invested</th><th style={s.th}>Value</th><th style={s.th}>P/L</th><th style={s.th}>Liq</th><th style={s.th}></th></tr></thead>
           <tbody>{data.crypto.map(c => {
