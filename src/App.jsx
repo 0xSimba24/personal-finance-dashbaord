@@ -485,7 +485,15 @@ export default function App() {
     histEntry.cryptoTotal = cryptoTotal;
     histEntry.reTotal = reTotal;
     histEntry.esopTotal = esopTotal;
-    histEntry.netWorth = mfTotal + eqTotal + cashTotal + cryptoTotal + reTotal + esopTotal;
+
+    let histLiab = 0;
+    updated.liabilities.forEach(l => {
+      const amort = calcAmortization(l.totalAmount, l.interestRate, l.tenureMonths, getMonthsElapsed(l.startDate));
+      histLiab += toEur(amort.remainingPrincipal, l.currency, histRate);
+    });
+    histEntry.liabilities = histLiab;
+    histEntry.grossAssets = mfTotal + eqTotal + cashTotal + cryptoTotal + reTotal + esopTotal;
+    histEntry.netWorth = histEntry.grossAssets - histLiab;
 
     // Keep max 365 entries to avoid localStorage bloat
     const history = [...(updated.priceHistory || []), histEntry].slice(-365);
