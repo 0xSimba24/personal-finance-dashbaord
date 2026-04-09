@@ -173,6 +173,7 @@ export default function App() {
   const [data, setData] = useState(null);
   const [tab, setTab] = useState("overview");
   const [subTab, setSubTab] = useState("mf");
+  const [expandedAccts, setExpandedAccts] = useState({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -888,34 +889,41 @@ export default function App() {
             const acctNativeInvested = acct.stocks.reduce((s, st) => s + st.quantity * st.costPrice, 0);
             const acctNativePL = acctNativeTotal - acctNativeInvested;
             const acctEurTotal = acct.stocks.reduce((s, st) => s + toEur(st.quantity * st.currentPrice, st.currency, rate, data.settings.eurToUsd || 1.08), 0);
+            const isExpanded = expandedAccts[acct.id] ?? false;
+            const toggleExpand = () => setExpandedAccts(prev => ({ ...prev, [acct.id]: !prev[acct.id] }));
             return (
             <div key={acct.id} style={s.card}>
-              <div style={s.flex}>
+              <div style={{ ...s.flex, cursor: "pointer" }} onClick={toggleExpand}>
                 <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <span style={{ fontSize: "12px", color: colors.textDim, width: "16px", transition: "transform 0.2s", transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)" }}>▶</span>
                   <div style={{ width: "4px", height: "24px", borderRadius: "2px", background: colors.accent }} />
-                  <ECell value={acct.name} onChange={v => update("equityAccounts", data.equityAccounts.map(a => a.id === acct.id ? { ...a, name: v } : a))} style={{ fontSize: "14px", fontWeight: 600 }} />
-                  <CurrSelect value={acctCurrency} onChange={v => {
+                  <span style={{ fontSize: "14px", fontWeight: 600 }} onClick={e => e.stopPropagation()}><ECell value={acct.name} onChange={v => update("equityAccounts", data.equityAccounts.map(a => a.id === acct.id ? { ...a, name: v } : a))} style={{ fontSize: "14px", fontWeight: 600 }} /></span>
+                  <span onClick={e => e.stopPropagation()}><CurrSelect value={acctCurrency} onChange={v => {
                     const accts = data.equityAccounts.map(a => a.id === acct.id ? { ...a, currency: v, stocks: a.stocks.map(st => ({ ...st, currency: v })) } : a);
                     update("equityAccounts", accts);
-                  }} />
-                  <span style={{ fontSize: "11px", color: colors.textDim }}>({acct.stocks.length})</span>
+                  }} /></span>
+                  <span style={{ fontSize: "11px", color: colors.textDim }}>({acct.stocks.filter(st => st.quantity > 0).length} stocks)</span>
                 </div>
-                <div style={s.flexG}>
+                <div style={s.flexG} onClick={e => e.stopPropagation()}>
                   <button style={s.btn} onClick={() => addStockToAccount(acct.id)}>+ Stock</button>
                   <button style={s.btnDanger} onClick={() => { if (confirm(`Delete "${acct.name}"?`)) removeItem("equityAccounts", acct.id); }}>Delete</button>
                 </div>
               </div>
-              {acct.stocks.length === 0 ? <div style={{ fontSize: "12px", color: colors.textDim, padding: "12px 0 0 14px" }}>No stocks</div> :
-              <div style={{ overflowX: "auto", marginTop: "10px" }}><table style={s.table}><thead><tr><th style={s.th}>Stock</th><th style={s.th}>Qty</th><th style={s.th}>Cost</th><th style={s.th}>Current</th><th style={s.th}>Invested</th><th style={s.th}>Value</th><th style={s.th}>P/L</th><th style={s.th}>Liq</th><th style={s.th}></th></tr></thead>
-              <tbody>{acct.stocks.map(st => {
-                const inv = st.quantity * st.costPrice, cur = st.quantity * st.currentPrice, pl = cur - inv, plP = inv > 0 ? (pl / inv * 100) : 0;
-                return <tr key={st.id}><td style={s.td}><ECell value={st.name} onChange={v => updateStock(acct.id, st.id, "name", v)} /></td><td style={s.td}><ECell value={st.quantity} type="number" onChange={v => updateStock(acct.id, st.id, "quantity", v)} /></td><td style={s.td}><ECell value={st.costPrice} type="number" onChange={v => updateStock(acct.id, st.id, "costPrice", v)} /></td><td style={s.td}><ECell value={st.currentPrice} type="number" onChange={v => updateStock(acct.id, st.id, "currentPrice", v)} /></td><td style={s.td}>{fmt(inv, st.currency)}</td><td style={s.td}>{fmt(cur, st.currency)}</td><td style={s.td}><span style={{ color: pl >= 0 ? colors.green : colors.red }}>{fmt(pl, st.currency)} ({plP.toFixed(1)}%)</span></td><td style={s.td}><button style={s.liqBadge(st.liquid)} onClick={() => updateStock(acct.id, st.id, "liquid", !st.liquid)}>{st.liquid ? "LIQ" : "ILLIQ"}</button></td><td style={s.td}><button style={s.btnDanger} onClick={() => removeStock(acct.id, st.id)}>×</button></td></tr>;
-              })}</tbody></table></div>}
+              {/* Always show totals */}
               {acct.stocks.length > 0 && <div style={{ marginTop: "8px", display: "flex", justifyContent: "flex-end", gap: "16px", fontSize: "12px", fontWeight: 600 }}>
                 <span style={{ color: colors.textDim }}>Invested: {fmt(acctNativeInvested, acctCurrency)}</span>
                 <span style={{ color: colors.textDim }}>Value: {fmt(acctNativeTotal, acctCurrency)}{acctCurrency !== "EUR" && <span style={{ fontSize: "10px" }}> ({fmt(acctEurTotal)})</span>}</span>
                 <span style={{ color: acctNativePL >= 0 ? colors.green : colors.red }}>P/L: {fmt(acctNativePL, acctCurrency)} ({acctNativeInvested > 0 ? (acctNativePL / acctNativeInvested * 100).toFixed(1) : 0}%)</span>
               </div>}
+              {/* Expandable stock table */}
+              {isExpanded && <>
+                {acct.stocks.length === 0 ? <div style={{ fontSize: "12px", color: colors.textDim, padding: "12px 0 0 14px" }}>No stocks</div> :
+                <div style={{ overflowX: "auto", marginTop: "10px" }}><table style={s.table}><thead><tr><th style={s.th}>Stock</th><th style={s.th}>Qty</th><th style={s.th}>Cost</th><th style={s.th}>Current</th><th style={s.th}>Invested</th><th style={s.th}>Value</th><th style={s.th}>P/L</th><th style={s.th}>Liq</th><th style={s.th}></th></tr></thead>
+                <tbody>{acct.stocks.map(st => {
+                  const inv = st.quantity * st.costPrice, cur = st.quantity * st.currentPrice, pl = cur - inv, plP = inv > 0 ? (pl / inv * 100) : 0;
+                  return <tr key={st.id}><td style={s.td}><ECell value={st.name} onChange={v => updateStock(acct.id, st.id, "name", v)} /></td><td style={s.td}><ECell value={st.quantity} type="number" onChange={v => updateStock(acct.id, st.id, "quantity", v)} /></td><td style={s.td}><ECell value={st.costPrice} type="number" onChange={v => updateStock(acct.id, st.id, "costPrice", v)} /></td><td style={s.td}><ECell value={st.currentPrice} type="number" onChange={v => updateStock(acct.id, st.id, "currentPrice", v)} /></td><td style={s.td}>{fmt(inv, st.currency)}</td><td style={s.td}>{fmt(cur, st.currency)}</td><td style={s.td}><span style={{ color: pl >= 0 ? colors.green : colors.red }}>{fmt(pl, st.currency)} ({plP.toFixed(1)}%)</span></td><td style={s.td}><button style={s.liqBadge(st.liquid)} onClick={() => updateStock(acct.id, st.id, "liquid", !st.liquid)}>{st.liquid ? "LIQ" : "ILLIQ"}</button></td><td style={s.td}><button style={s.btnDanger} onClick={() => removeStock(acct.id, st.id)}>×</button></td></tr>;
+                })}</tbody></table></div>}
+              </>}
             </div>
             );
           })}
