@@ -33,9 +33,9 @@ const defaultData = {
     { id: uid(), name: "PPFAS Niece", units: 0, costPrice: 0, currentPrice: 0, currency: "INR", liquid: false, schemeCode: "122639" },
   ],
   equityAccounts: [
-    { id: uid(), name: "Zerodha", stocks: [] },
-    { id: uid(), name: "HDFC Sourabh", stocks: [] },
-    { id: uid(), name: "HDFC Upasana", stocks: [] },
+    { id: uid(), name: "Zerodha", currency: "INR", stocks: [] },
+    { id: uid(), name: "HDFC Sourabh", currency: "INR", stocks: [] },
+    { id: uid(), name: "HDFC Upasana", currency: "INR", stocks: [] },
   ],
   cashSavings: [
     { id: uid(), name: "ING Sparren", type: "Bank", amount: 1000, currency: "EUR", liquid: true },
@@ -252,7 +252,7 @@ export default function App() {
 
   // Equity account helpers
   const addStockToAccount = useCallback((accountId) => {
-    const accts = data.equityAccounts.map(a => a.id === accountId ? { ...a, stocks: [...a.stocks, { id: uid(), name: "New Stock", quantity: 0, costPrice: 0, currentPrice: 0, currency: "INR", liquid: true, nseTicker: "" }] } : a);
+    const accts = data.equityAccounts.map(a => a.id === accountId ? { ...a, stocks: [...a.stocks, { id: uid(), name: "New Stock", quantity: 0, costPrice: 0, currentPrice: 0, currency: a.currency || "INR", liquid: true, nseTicker: "" }] } : a);
     update("equityAccounts", accts);
   }, [data, update]);
 
@@ -864,20 +864,30 @@ export default function App() {
             const inv = f.units * f.costPrice, cur = f.units * f.currentPrice, pl = cur - inv, plP = inv > 0 ? (pl / inv * 100) : 0;
             return <tr key={f.id}><td style={s.td}><ECell value={f.name} onChange={v => updateItem("mutualFunds", f.id, "name", v)} /></td><td style={s.td}><ECell value={f.units} type="number" onChange={v => updateItem("mutualFunds", f.id, "units", v)} /></td><td style={s.td}><ECell value={f.costPrice} type="number" onChange={v => updateItem("mutualFunds", f.id, "costPrice", v)} /></td><td style={s.td}><ECell value={f.currentPrice} type="number" onChange={v => updateItem("mutualFunds", f.id, "currentPrice", v)} /></td><td style={s.td}>{fmt(inv, f.currency)}</td><td style={s.td}>{fmt(cur, f.currency)}</td><td style={s.td}><span style={{ color: pl >= 0 ? colors.green : colors.red }}>{fmt(pl, f.currency)} ({plP.toFixed(1)}%)</span></td><td style={s.td}><button style={s.liqBadge(f.liquid)} onClick={() => updateItem("mutualFunds", f.id, "liquid", !f.liquid)}>{f.liquid ? "LIQ" : "ILLIQ"}</button></td><td style={s.td}><button style={s.btnDanger} onClick={() => removeItem("mutualFunds", f.id)}>×</button></td></tr>;
           })}</tbody></table></div>
-          <div style={{ marginTop: "8px", fontSize: "13px", fontWeight: 600, textAlign: "right" }}>Total: {fmt(calc.mfValue.total)}</div>
+          <div style={{ marginTop: "8px", fontSize: "13px", fontWeight: 600, textAlign: "right" }}>Total: {fmtBoth(calc.mfValue.total, rate)}</div>
         </div>}
 
         {subTab === "eq" && <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
           {(data.priceHistory || []).length >= 2 && <div style={s.card}>
             <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: h.eqTotal || 0 }))} title="Equity Total" color="#8b5cf6" />
           </div>}
-          <div style={s.flex}><div style={s.h2}>Equity Accounts</div><button style={s.btn} onClick={() => addItem("equityAccounts", { name: "New Account", stocks: [] })}>+ Add Account</button></div>
-          {(data.equityAccounts || []).map(acct => (
+          <div style={s.flex}><div style={s.h2}>Equity Accounts</div><button style={s.btn} onClick={() => addItem("equityAccounts", { name: "New Account", currency: "INR", stocks: [] })}>+ Add Account</button></div>
+          {(data.equityAccounts || []).map(acct => {
+            const acctCurrency = acct.currency || "INR";
+            const acctNativeTotal = acct.stocks.reduce((s, st) => s + st.quantity * st.currentPrice, 0);
+            const acctNativeInvested = acct.stocks.reduce((s, st) => s + st.quantity * st.costPrice, 0);
+            const acctNativePL = acctNativeTotal - acctNativeInvested;
+            const acctEurTotal = acct.stocks.reduce((s, st) => s + toEur(st.quantity * st.currentPrice, st.currency, rate, data.settings.eurToUsd || 1.08), 0);
+            return (
             <div key={acct.id} style={s.card}>
               <div style={s.flex}>
                 <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                   <div style={{ width: "4px", height: "24px", borderRadius: "2px", background: colors.accent }} />
                   <ECell value={acct.name} onChange={v => update("equityAccounts", data.equityAccounts.map(a => a.id === acct.id ? { ...a, name: v } : a))} style={{ fontSize: "14px", fontWeight: 600 }} />
+                  <CurrSelect value={acctCurrency} onChange={v => {
+                    const accts = data.equityAccounts.map(a => a.id === acct.id ? { ...a, currency: v, stocks: a.stocks.map(st => ({ ...st, currency: v })) } : a);
+                    update("equityAccounts", accts);
+                  }} />
                   <span style={{ fontSize: "11px", color: colors.textDim }}>({acct.stocks.length})</span>
                 </div>
                 <div style={s.flexG}>
@@ -891,9 +901,15 @@ export default function App() {
                 const inv = st.quantity * st.costPrice, cur = st.quantity * st.currentPrice, pl = cur - inv, plP = inv > 0 ? (pl / inv * 100) : 0;
                 return <tr key={st.id}><td style={s.td}><ECell value={st.name} onChange={v => updateStock(acct.id, st.id, "name", v)} /></td><td style={s.td}><ECell value={st.quantity} type="number" onChange={v => updateStock(acct.id, st.id, "quantity", v)} /></td><td style={s.td}><ECell value={st.costPrice} type="number" onChange={v => updateStock(acct.id, st.id, "costPrice", v)} /></td><td style={s.td}><ECell value={st.currentPrice} type="number" onChange={v => updateStock(acct.id, st.id, "currentPrice", v)} /></td><td style={s.td}>{fmt(inv, st.currency)}</td><td style={s.td}>{fmt(cur, st.currency)}</td><td style={s.td}><span style={{ color: pl >= 0 ? colors.green : colors.red }}>{fmt(pl, st.currency)} ({plP.toFixed(1)}%)</span></td><td style={s.td}><button style={s.liqBadge(st.liquid)} onClick={() => updateStock(acct.id, st.id, "liquid", !st.liquid)}>{st.liquid ? "LIQ" : "ILLIQ"}</button></td><td style={s.td}><button style={s.btnDanger} onClick={() => removeStock(acct.id, st.id)}>×</button></td></tr>;
               })}</tbody></table></div>}
-              {acct.stocks.length > 0 && (() => { const t = acct.stocks.reduce((s, st) => s + toEur(st.quantity * st.currentPrice, st.currency, rate), 0); return <div style={{ marginTop: "6px", fontSize: "12px", fontWeight: 600, textAlign: "right", color: colors.textDim }}>Account Total: {fmt(t)}</div>; })()}
+              {acct.stocks.length > 0 && <div style={{ marginTop: "8px", display: "flex", justifyContent: "flex-end", gap: "16px", fontSize: "12px", fontWeight: 600 }}>
+                <span style={{ color: colors.textDim }}>Invested: {fmt(acctNativeInvested, acctCurrency)}</span>
+                <span style={{ color: colors.textDim }}>Value: {fmt(acctNativeTotal, acctCurrency)}</span>
+                <span style={{ color: acctNativePL >= 0 ? colors.green : colors.red }}>P/L: {fmt(acctNativePL, acctCurrency)} ({acctNativeInvested > 0 ? (acctNativePL / acctNativeInvested * 100).toFixed(1) : 0}%)</span>
+                {acctCurrency !== "EUR" && <span style={{ color: colors.textDim }}>≈ {fmt(acctEurTotal)}</span>}
+              </div>}
             </div>
-          ))}
+            );
+          })}
           <div style={{ fontSize: "13px", fontWeight: 600, textAlign: "right" }}>All Equity: {fmtBoth(calc.eqValue.total, rate)}</div>
         </div>}
 
