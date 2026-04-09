@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { fetchCryptoPrices, fetchHyperliquidPrices, fetchAllMFNavs, fetchEquityPricesFromSheet, generateSheetTemplate, fetchExchangeRates } from "./priceService.js";
 import PortfolioChart, { MultiLineChart } from "./PortfolioChart.jsx";
+import DonutChart from "./DonutChart.jsx";
 
 const uid = () => Math.random().toString(36).slice(2, 9);
 const STORE_KEY = "fin-dashboard-v3";
@@ -174,6 +175,8 @@ export default function App() {
   const [tab, setTab] = useState("overview");
   const [subTab, setSubTab] = useState("mf");
   const [expandedAccts, setExpandedAccts] = useState({});
+  const [stockSort, setStockSort] = useState({ field: null, dir: "desc" });
+  const [stockSearch, setStockSearch] = useState("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -327,14 +330,16 @@ export default function App() {
 
   const exportData = useCallback(() => {
     if (!data) return;
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const updated = { ...data, settings: { ...data.settings, lastExported: new Date().toISOString() } };
+    const blob = new Blob([JSON.stringify(updated, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
     a.download = `finance-dashboard-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
-  }, [data]);
+    save(updated);
+  }, [data, save]);
 
   const importData = useCallback(() => {
     const input = document.createElement("input");
@@ -539,8 +544,20 @@ export default function App() {
   const hasNextPhase = activePhaseIdx >= 0 && activePhaseIdx < data.phases.length - 1;
 
   // ─── OVERVIEW ───
-  const renderOverview = () => (
+  const renderOverview = () => {
+    // Calculate days since last export
+    const lastExported = data.settings.lastExported;
+    const daysSinceExport = lastExported ? Math.floor((Date.now() - new Date(lastExported).getTime()) / (86400000)) : null;
+    const showBackupWarning = daysSinceExport === null || daysSinceExport > 7;
+
+    return (
     <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+      {showBackupWarning && <div style={{ padding: "10px 14px", borderRadius: "8px", background: `${colors.yellow}12`, border: `1px solid ${colors.yellow}30`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span style={{ fontSize: "11px", color: colors.yellow }}>
+          {daysSinceExport === null ? "⚠ You haven't exported a backup yet." : `⚠ Last backup was ${daysSinceExport} days ago.`} Your data lives only in this browser.
+        </span>
+        <button style={{ ...s.btnOutline, borderColor: colors.yellow, color: colors.yellow, padding: "4px 10px", fontSize: "10px" }} onClick={exportData}>💾 Export Now</button>
+      </div>}
       <div style={s.card}>
         <div style={s.flex}>
           <div><div style={s.h3}>Net Worth</div><div style={s.bigNum}>{fmtBoth(calc.netWorth, rate)}</div></div>
@@ -660,15 +677,38 @@ export default function App() {
       })()}
 
       <div style={s.card}>
-        <div style={s.h2}>Asset Breakdown</div>
-        <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
-          {[{ label: "Mutual Funds / ETFs", val: calc.mfValue.total, color: "#6366f1" }, { label: "Equity", val: calc.eqValue.total, color: "#8b5cf6" }, { label: "Cash", val: calc.cashValue.total, color: colors.green }, { label: "Crypto", val: calc.cryptoValue.total, color: "#f59e0b" }, { label: "Real Estate", val: calc.propValue.total, color: "#3b82f6" }, { label: "ESOPs", val: calc.esopValue.total, color: "#ec4899" }].filter(x => x.val > 0).map(x => (
-            <div key={x.label} style={{ padding: "8px 14px", borderRadius: "8px", background: `${x.color}15`, border: `1px solid ${x.color}30`, flex: "1", minWidth: "120px" }}>
-              <div style={{ fontSize: "10px", color: x.color, fontWeight: 600, marginBottom: "4px" }}>{x.label}</div>
-              <div style={{ fontSize: "15px", fontWeight: 700 }}>{fmt(x.val)}</div>
-              <div style={{ fontSize: "10px", color: colors.textDim }}>{calc.grossAssets > 0 ? (x.val / calc.grossAssets * 100).toFixed(1) : 0}%</div>
-            </div>
-          ))}
+        <div style={s.h2}>Portfolio Allocation</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px" }}>
+          {/* Asset allocation donut */}
+          <DonutChart
+            title="By Asset Class"
+            segments={[
+              { label: "MFs / ETFs", value: calc.mfValue.total, color: "#6366f1" },
+              { label: "Equity", value: calc.eqValue.total, color: "#8b5cf6" },
+              { label: "Cash", value: calc.cashValue.total, color: colors.green },
+              { label: "Crypto", value: calc.cryptoValue.total, color: "#f59e0b" },
+              { label: "Real Estate", value: calc.propValue.total, color: "#3b82f6" },
+              { label: "ESOPs", value: calc.esopValue.total, color: "#ec4899" },
+            ].filter(x => x.value > 0)}
+          />
+          {/* Currency exposure donut */}
+          {(() => {
+            const currExp = { EUR: 0, INR: 0, USD: 0 };
+            data.mutualFunds.forEach(f => { const v = f.units * f.currentPrice; currExp[f.currency] = (currExp[f.currency] || 0) + v / (f.currency === "INR" ? rate : f.currency === "USD" ? (data.settings.eurToUsd || 1.08) : 1); });
+            (data.equityAccounts || []).forEach(a => a.stocks.forEach(st => { const v = st.quantity * st.currentPrice; currExp[st.currency] = (currExp[st.currency] || 0) + v / (st.currency === "INR" ? rate : st.currency === "USD" ? (data.settings.eurToUsd || 1.08) : 1); }));
+            data.cashSavings.forEach(c => { currExp[c.currency] = (currExp[c.currency] || 0) + c.amount / (c.currency === "INR" ? rate : c.currency === "USD" ? (data.settings.eurToUsd || 1.08) : 1); });
+            data.crypto.forEach(c => { const v = c.quantity * c.currentPrice; currExp["USD"] = (currExp["USD"] || 0) + v / (data.settings.eurToUsd || 1.08); });
+            (data.realEstate || []).forEach(p => { currExp[p.currency] = (currExp[p.currency] || 0) + p.value / (p.currency === "INR" ? rate : p.currency === "USD" ? (data.settings.eurToUsd || 1.08) : 1); });
+            data.esops.forEach(e => { const v = Math.max(0, (e.vestedQty + e.unvestedQty) * (e.currentPrice - e.strikePrice)); currExp[e.currency] = (currExp[e.currency] || 0) + v / (e.currency === "INR" ? rate : e.currency === "USD" ? (data.settings.eurToUsd || 1.08) : 1); });
+            return <DonutChart
+              title="By Currency"
+              segments={[
+                { label: "EUR", value: currExp.EUR || 0, color: "#3b82f6" },
+                { label: "INR", value: currExp.INR || 0, color: "#f59e0b" },
+                { label: "USD", value: currExp.USD || 0, color: "#22c997" },
+              ].filter(x => x.value > 0)}
+            />;
+          })()}
         </div>
       </div>
 
@@ -817,7 +857,8 @@ export default function App() {
         </div>
       </div>}
     </div>
-  );
+    );
+  };
 
   // ─── INCOME & EXPENSES ───
   const renderIncome = () => (
@@ -918,11 +959,60 @@ export default function App() {
               {/* Expandable stock table */}
               {isExpanded && <>
                 {acct.stocks.length === 0 ? <div style={{ fontSize: "12px", color: colors.textDim, padding: "12px 0 0 14px" }}>No stocks</div> :
-                <div style={{ overflowX: "auto", marginTop: "10px" }}><table style={s.table}><thead><tr><th style={s.th}>Stock</th><th style={s.th}>Qty</th><th style={s.th}>Cost</th><th style={s.th}>Current</th><th style={s.th}>Invested</th><th style={s.th}>Value</th><th style={s.th}>P/L</th><th style={s.th}>Liq</th><th style={s.th}></th></tr></thead>
-                <tbody>{acct.stocks.map(st => {
-                  const inv = st.quantity * st.costPrice, cur = st.quantity * st.currentPrice, pl = cur - inv, plP = inv > 0 ? (pl / inv * 100) : 0;
-                  return <tr key={st.id}><td style={s.td}><ECell value={st.name} onChange={v => updateStock(acct.id, st.id, "name", v)} /></td><td style={s.td}><ECell value={st.quantity} type="number" onChange={v => updateStock(acct.id, st.id, "quantity", v)} /></td><td style={s.td}><ECell value={st.costPrice} type="number" onChange={v => updateStock(acct.id, st.id, "costPrice", v)} /></td><td style={s.td}><ECell value={st.currentPrice} type="number" onChange={v => updateStock(acct.id, st.id, "currentPrice", v)} /></td><td style={s.td}>{fmt(inv, st.currency)}</td><td style={s.td}>{fmt(cur, st.currency)}</td><td style={s.td}><span style={{ color: pl >= 0 ? colors.green : colors.red }}>{fmt(pl, st.currency)} ({plP.toFixed(1)}%)</span></td><td style={s.td}><button style={s.liqBadge(st.liquid)} onClick={() => updateStock(acct.id, st.id, "liquid", !st.liquid)}>{st.liquid ? "LIQ" : "ILLIQ"}</button></td><td style={s.td}><button style={s.btnDanger} onClick={() => removeStock(acct.id, st.id)}>×</button></td></tr>;
-                })}</tbody></table></div>}
+                (() => {
+                  const toggleSort = (field) => setStockSort(prev => ({ field, dir: prev.field === field && prev.dir === "desc" ? "asc" : "desc" }));
+                  const sortArrow = (field) => stockSort.field === field ? (stockSort.dir === "desc" ? " ↓" : " ↑") : "";
+                  const thSort = (label, field) => ({ ...s.th, cursor: "pointer", userSelect: "none" });
+
+                  const enriched = acct.stocks.map(st => {
+                    const inv = st.quantity * st.costPrice, cur = st.quantity * st.currentPrice, pl = cur - inv;
+                    const plP = inv > 0 ? (pl / inv * 100) : 0;
+                    return { ...st, inv, cur, pl, plP };
+                  });
+
+                  let filtered = enriched;
+                  if (stockSearch) {
+                    const q = stockSearch.toLowerCase();
+                    filtered = enriched.filter(st => st.name.toLowerCase().includes(q));
+                  }
+
+                  if (stockSort.field) {
+                    const dir = stockSort.dir === "desc" ? -1 : 1;
+                    const f = stockSort.field;
+                    filtered.sort((a, b) => {
+                      let va, vb;
+                      if (f === "name") { va = a.name.toLowerCase(); vb = b.name.toLowerCase(); return va < vb ? -dir : va > vb ? dir : 0; }
+                      if (f === "qty") { va = a.quantity; vb = b.quantity; }
+                      else if (f === "cost") { va = a.costPrice; vb = b.costPrice; }
+                      else if (f === "price") { va = a.currentPrice; vb = b.currentPrice; }
+                      else if (f === "inv") { va = a.inv; vb = b.inv; }
+                      else if (f === "val") { va = a.cur; vb = b.cur; }
+                      else if (f === "pl") { va = a.pl; vb = b.pl; }
+                      else if (f === "plP") { va = a.plP; vb = b.plP; }
+                      else { va = 0; vb = 0; }
+                      return (va - vb) * dir;
+                    });
+                  }
+
+                  return <>
+                    <div style={{ marginTop: "10px", marginBottom: "6px" }}>
+                      <input style={{ ...s.input, maxWidth: "250px" }} placeholder="Search stocks..." value={stockSearch} onChange={e => setStockSearch(e.target.value)} />
+                    </div>
+                    <div style={{ overflowX: "auto" }}><table style={s.table}><thead><tr>
+                      <th style={thSort("name", "name")} onClick={() => toggleSort("name")}>Stock{sortArrow("name")}</th>
+                      <th style={thSort("qty", "qty")} onClick={() => toggleSort("qty")}>Qty{sortArrow("qty")}</th>
+                      <th style={thSort("cost", "cost")} onClick={() => toggleSort("cost")}>Cost{sortArrow("cost")}</th>
+                      <th style={thSort("price", "price")} onClick={() => toggleSort("price")}>Current{sortArrow("price")}</th>
+                      <th style={thSort("inv", "inv")} onClick={() => toggleSort("inv")}>Invested{sortArrow("inv")}</th>
+                      <th style={thSort("val", "val")} onClick={() => toggleSort("val")}>Value{sortArrow("val")}</th>
+                      <th style={thSort("plP", "plP")} onClick={() => toggleSort("plP")}>P/L{sortArrow("plP")}</th>
+                      <th style={s.th}>Liq</th><th style={s.th}></th>
+                    </tr></thead>
+                    <tbody>{filtered.map(st => (
+                      <tr key={st.id}><td style={s.td}><ECell value={st.name} onChange={v => updateStock(acct.id, st.id, "name", v)} /></td><td style={s.td}><ECell value={st.quantity} type="number" onChange={v => updateStock(acct.id, st.id, "quantity", v)} /></td><td style={s.td}><ECell value={st.costPrice} type="number" onChange={v => updateStock(acct.id, st.id, "costPrice", v)} /></td><td style={s.td}><ECell value={st.currentPrice} type="number" onChange={v => updateStock(acct.id, st.id, "currentPrice", v)} /></td><td style={s.td}>{fmt(st.inv, st.currency)}</td><td style={s.td}>{fmt(st.cur, st.currency)}</td><td style={s.td}><span style={{ color: st.pl >= 0 ? colors.green : colors.red }}>{fmt(st.pl, st.currency)} ({st.plP.toFixed(1)}%)</span></td><td style={s.td}><button style={s.liqBadge(st.liquid)} onClick={() => updateStock(acct.id, st.id, "liquid", !st.liquid)}>{st.liquid ? "LIQ" : "ILLIQ"}</button></td><td style={s.td}><button style={s.btnDanger} onClick={() => removeStock(acct.id, st.id)}>×</button></td></tr>
+                    ))}</tbody></table></div>
+                  </>;
+                })()}
               </>}
             </div>
             );
