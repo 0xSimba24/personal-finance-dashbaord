@@ -181,7 +181,21 @@ export default function App() {
 
   useEffect(() => {
     const saved = storage.get(STORE_KEY);
-    setData(saved ? { ...defaultData, ...saved } : defaultData);
+    if (saved) {
+      const merged = { ...defaultData, ...saved };
+      // Migrate: fix old snapshots where liquidNW was incorrectly negative (old formula subtracted liabilities)
+      if (merged.snapshots) {
+        merged.snapshots = merged.snapshots.map(snap => {
+          if (snap.liquidNW < 0 && snap.grossAssets && snap.illiquidNW >= 0) {
+            return { ...snap, liquidNW: snap.grossAssets - snap.illiquidNW };
+          }
+          return snap;
+        });
+      }
+      setData(merged);
+    } else {
+      setData(defaultData);
+    }
     setLoading(false);
   }, []);
 
