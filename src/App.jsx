@@ -185,12 +185,15 @@ export default function App() {
       const merged = { ...defaultData, ...saved };
       // Migrate: fix old snapshots where liquidNW was incorrectly negative (old formula subtracted liabilities)
       if (merged.snapshots) {
+        let migrated = false;
         merged.snapshots = merged.snapshots.map(snap => {
           if (snap.liquidNW < 0 && snap.grossAssets && snap.illiquidNW >= 0) {
+            migrated = true;
             return { ...snap, liquidNW: snap.grossAssets - snap.illiquidNW };
           }
           return snap;
         });
+        if (migrated) storage.set(STORE_KEY, merged);
       }
       setData(merged);
     } else {
