@@ -516,9 +516,16 @@ export default function App() {
     histEntry.grossAssets = mfTotal + eqTotal + cashTotal + cryptoTotal + reTotal + esopTotal;
     histEntry.netWorth = histEntry.grossAssets - histLiab;
 
-    // Keep max 365 entries to avoid localStorage bloat
-    const history = [...(updated.priceHistory || []), histEntry].slice(-365);
-    updated.priceHistory = history;
+    // Deduplicate: replace last entry if same day, otherwise append. Cap at 365.
+    const today = histEntry.date.slice(0, 10);
+    const existing = [...(updated.priceHistory || [])];
+    const lastIdx = existing.length - 1;
+    if (lastIdx >= 0 && existing[lastIdx].date.slice(0, 10) === today) {
+      existing[lastIdx] = histEntry; // replace today's earlier entry
+    } else {
+      existing.push(histEntry);
+    }
+    updated.priceHistory = existing.slice(-365);
 
     save(updated);
     setRefreshMsg(results.join(" · "));
