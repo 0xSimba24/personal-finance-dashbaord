@@ -17,7 +17,7 @@ const RANGES = [
 
 const fmt = (n, c = "EUR") => {
   if (c === "INR") return "₹" + Number(n).toLocaleString("en-IN", { maximumFractionDigits: 0 });
-  return "€" + Number(n).toLocaleString("de-DE", { maximumFractionDigits: 0 });
+  return "€" + Number(n).toLocaleString("en-US", { maximumFractionDigits: 0 });
 };
 
 export default function PortfolioChart({ history, title, color = colors.accent, currency = "EUR", height = 200 }) {

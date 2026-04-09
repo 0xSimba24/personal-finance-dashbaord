@@ -89,7 +89,7 @@ const toEur = (amount, currency, rate, usdRate = 1.08) => {
 const fmt = (n, c = "EUR") => {
   if (c === "INR") return "₹" + Number(n).toLocaleString("en-IN", { maximumFractionDigits: 0 });
   if (c === "USD") return "$" + Number(n).toLocaleString("en-US", { maximumFractionDigits: 0 });
-  return "€" + Number(n).toLocaleString("de-DE", { maximumFractionDigits: 0 });
+  return "€" + Number(n).toLocaleString("en-US", { maximumFractionDigits: 0 });
 };
 const fmtBoth = (eurVal, rate) => `${fmt(eurVal, "EUR")} / ${fmt(eurVal * rate, "INR")}`;
 const pct = (current, target) => target > 0 ? Math.min(100, (current / target) * 100) : 0;
@@ -658,7 +658,7 @@ export default function App() {
       <div style={s.card}>
         <div style={s.h2}>Asset Breakdown</div>
         <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
-          {[{ label: "Mutual Funds", val: calc.mfValue.total, color: "#6366f1" }, { label: "Equity", val: calc.eqValue.total, color: "#8b5cf6" }, { label: "Cash", val: calc.cashValue.total, color: colors.green }, { label: "Crypto", val: calc.cryptoValue.total, color: "#f59e0b" }, { label: "Real Estate", val: calc.propValue.total, color: "#3b82f6" }, { label: "ESOPs", val: calc.esopValue.total, color: "#ec4899" }].filter(x => x.val > 0).map(x => (
+          {[{ label: "Mutual Funds / ETFs", val: calc.mfValue.total, color: "#6366f1" }, { label: "Equity", val: calc.eqValue.total, color: "#8b5cf6" }, { label: "Cash", val: calc.cashValue.total, color: colors.green }, { label: "Crypto", val: calc.cryptoValue.total, color: "#f59e0b" }, { label: "Real Estate", val: calc.propValue.total, color: "#3b82f6" }, { label: "ESOPs", val: calc.esopValue.total, color: "#ec4899" }].filter(x => x.val > 0).map(x => (
             <div key={x.label} style={{ padding: "8px 14px", borderRadius: "8px", background: `${x.color}15`, border: `1px solid ${x.color}30`, flex: "1", minWidth: "120px" }}>
               <div style={{ fontSize: "10px", color: x.color, fontWeight: 600, marginBottom: "4px" }}>{x.label}</div>
               <div style={{ fontSize: "15px", fontWeight: 700 }}>{fmt(x.val)}</div>
@@ -771,7 +771,7 @@ export default function App() {
         </div>
 
         <div>
-          <div style={{ fontSize: "12px", fontWeight: 600, marginBottom: "6px" }}>Mutual Funds — AMFI Scheme Codes</div>
+          <div style={{ fontSize: "12px", fontWeight: 600, marginBottom: "6px" }}>MF / ETF — AMFI Scheme Codes</div>
           <div style={{ fontSize: "11px", color: colors.textDim, marginBottom: "6px" }}>
             Find codes at mfapi.in (e.g. PPFAS Flexi Cap Direct = 122639)
           </div>
@@ -841,16 +841,16 @@ export default function App() {
 
   // ─── PORTFOLIO ───
   const renderPortfolio = () => {
-    const subTabs = [{ key: "mf", label: "Mutual Funds" }, { key: "eq", label: "Equity" }, { key: "cash", label: "Cash & Savings" }, { key: "crypto", label: "Crypto" }, { key: "re", label: "Real Estate" }, { key: "esop", label: "ESOPs" }];
+    const subTabs = [{ key: "mf", label: "MFs / ETFs" }, { key: "eq", label: "Equity" }, { key: "cash", label: "Cash & Savings" }, { key: "crypto", label: "Crypto" }, { key: "re", label: "Real Estate" }, { key: "esop", label: "ESOPs" }];
 
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
         <div style={s.flexG}>{subTabs.map(t => <button key={t.key} style={s.tab(subTab === t.key)} onClick={() => setSubTab(t.key)}>{t.label}</button>)}</div>
 
         {subTab === "mf" && <div style={s.card}>
-          <div style={s.flex}><div style={s.h2}>Mutual Funds</div><button style={s.btn} onClick={() => addItem("mutualFunds", { name: "New Fund", units: 0, costPrice: 0, currentPrice: 0, currency: "INR", liquid: true })}>+ Add</button></div>
+          <div style={s.flex}><div style={s.h2}>Mutual Funds / ETFs</div><button style={s.btn} onClick={() => addItem("mutualFunds", { name: "New Fund", units: 0, costPrice: 0, currentPrice: 0, currency: "INR", liquid: true })}>+ Add</button></div>
           {(data.priceHistory || []).length >= 2 && <div style={{ marginBottom: "14px" }}>
-            <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: h.mfTotal || 0 }))} title="Mutual Funds Total" />
+            <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: h.mfTotal || 0 }))} title="MF / ETF Total" />
             {data.mutualFunds.filter(f => f.units > 0).length > 1 && <div style={{ marginTop: "14px" }}>
               <MultiLineChart
                 history={data.priceHistory}
@@ -859,10 +859,10 @@ export default function App() {
               />
             </div>}
           </div>}
-          <div style={{ overflowX: "auto" }}><table style={s.table}><thead><tr><th style={s.th}>Fund</th><th style={s.th}>Units</th><th style={s.th}>Cost/Unit</th><th style={s.th}>Current</th><th style={s.th}>Invested</th><th style={s.th}>Value</th><th style={s.th}>P/L</th><th style={s.th}>Liq</th><th style={s.th}></th></tr></thead>
+          <div style={{ overflowX: "auto" }}><table style={s.table}><thead><tr><th style={s.th}>Fund</th><th style={s.th}>Curr</th><th style={s.th}>Units</th><th style={s.th}>Cost/Unit</th><th style={s.th}>Current</th><th style={s.th}>Invested</th><th style={s.th}>Value</th><th style={s.th}>P/L</th><th style={s.th}>Liq</th><th style={s.th}></th></tr></thead>
           <tbody>{data.mutualFunds.map(f => {
             const inv = f.units * f.costPrice, cur = f.units * f.currentPrice, pl = cur - inv, plP = inv > 0 ? (pl / inv * 100) : 0;
-            return <tr key={f.id}><td style={s.td}><ECell value={f.name} onChange={v => updateItem("mutualFunds", f.id, "name", v)} /></td><td style={s.td}><ECell value={f.units} type="number" onChange={v => updateItem("mutualFunds", f.id, "units", v)} /></td><td style={s.td}><ECell value={f.costPrice} type="number" onChange={v => updateItem("mutualFunds", f.id, "costPrice", v)} /></td><td style={s.td}><ECell value={f.currentPrice} type="number" onChange={v => updateItem("mutualFunds", f.id, "currentPrice", v)} /></td><td style={s.td}>{fmt(inv, f.currency)}</td><td style={s.td}>{fmt(cur, f.currency)}</td><td style={s.td}><span style={{ color: pl >= 0 ? colors.green : colors.red }}>{fmt(pl, f.currency)} ({plP.toFixed(1)}%)</span></td><td style={s.td}><button style={s.liqBadge(f.liquid)} onClick={() => updateItem("mutualFunds", f.id, "liquid", !f.liquid)}>{f.liquid ? "LIQ" : "ILLIQ"}</button></td><td style={s.td}><button style={s.btnDanger} onClick={() => removeItem("mutualFunds", f.id)}>×</button></td></tr>;
+            return <tr key={f.id}><td style={s.td}><ECell value={f.name} onChange={v => updateItem("mutualFunds", f.id, "name", v)} /></td><td style={s.td}><CurrSelect value={f.currency} onChange={v => updateItem("mutualFunds", f.id, "currency", v)} /></td><td style={s.td}><ECell value={f.units} type="number" onChange={v => updateItem("mutualFunds", f.id, "units", v)} /></td><td style={s.td}><ECell value={f.costPrice} type="number" onChange={v => updateItem("mutualFunds", f.id, "costPrice", v)} /></td><td style={s.td}><ECell value={f.currentPrice} type="number" onChange={v => updateItem("mutualFunds", f.id, "currentPrice", v)} /></td><td style={s.td}>{fmt(inv, f.currency)}</td><td style={s.td}>{fmt(cur, f.currency)}</td><td style={s.td}><span style={{ color: pl >= 0 ? colors.green : colors.red }}>{fmt(pl, f.currency)} ({plP.toFixed(1)}%)</span></td><td style={s.td}><button style={s.liqBadge(f.liquid)} onClick={() => updateItem("mutualFunds", f.id, "liquid", !f.liquid)}>{f.liquid ? "LIQ" : "ILLIQ"}</button></td><td style={s.td}><button style={s.btnDanger} onClick={() => removeItem("mutualFunds", f.id)}>×</button></td></tr>;
           })}</tbody></table></div>
           <div style={{ marginTop: "8px", fontSize: "13px", fontWeight: 600, textAlign: "right" }}>Total: {fmtBoth(calc.mfValue.total, rate)}</div>
         </div>}
@@ -903,9 +903,8 @@ export default function App() {
               })}</tbody></table></div>}
               {acct.stocks.length > 0 && <div style={{ marginTop: "8px", display: "flex", justifyContent: "flex-end", gap: "16px", fontSize: "12px", fontWeight: 600 }}>
                 <span style={{ color: colors.textDim }}>Invested: {fmt(acctNativeInvested, acctCurrency)}</span>
-                <span style={{ color: colors.textDim }}>Value: {fmt(acctNativeTotal, acctCurrency)}</span>
+                <span style={{ color: colors.textDim }}>Value: {fmt(acctNativeTotal, acctCurrency)}{acctCurrency !== "EUR" && <span style={{ fontSize: "10px" }}> ({fmt(acctEurTotal)})</span>}</span>
                 <span style={{ color: acctNativePL >= 0 ? colors.green : colors.red }}>P/L: {fmt(acctNativePL, acctCurrency)} ({acctNativeInvested > 0 ? (acctNativePL / acctNativeInvested * 100).toFixed(1) : 0}%)</span>
-                {acctCurrency !== "EUR" && <span style={{ color: colors.textDim }}>≈ {fmt(acctEurTotal)}</span>}
               </div>}
             </div>
             );
