@@ -462,11 +462,14 @@ export default function App() {
       if (f.units > 0) histEntry.items[`mf_${f.id}`] = val;
     });
     (updated.equityAccounts || []).forEach(acct => {
+      let acctTotal = 0;
       (acct.stocks || []).forEach(st => {
         const val = toEur(st.quantity * st.currentPrice, st.currency, histRate, histUsdRate);
         eqTotal += val;
+        acctTotal += val;
         if (st.quantity > 0) histEntry.items[`eq_${st.id}`] = val;
       });
+      histEntry.items[`eqAcct_${acct.id}`] = acctTotal;
     });
     updated.cashSavings.forEach(c => {
       const val = toEur(c.amount, c.currency, histRate, histUsdRate);
@@ -870,6 +873,13 @@ export default function App() {
         {subTab === "eq" && <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
           {(data.priceHistory || []).length >= 2 && <div style={s.card}>
             <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: h.eqTotal || 0 }))} title="Equity Total" color="#8b5cf6" />
+            {(data.equityAccounts || []).filter(a => a.stocks.some(st => st.quantity > 0)).length > 1 && <div style={{ marginTop: "14px" }}>
+              <MultiLineChart
+                history={data.priceHistory}
+                items={(data.equityAccounts || []).filter(a => a.stocks.some(st => st.quantity > 0)).map(a => ({ key: `eqAcct_${a.id}`, label: a.name }))}
+                title="Per Account"
+              />
+            </div>}
           </div>}
           <div style={s.flex}><div style={s.h2}>Equity Accounts</div><button style={s.btn} onClick={() => addItem("equityAccounts", { name: "New Account", currency: "INR", stocks: [] })}>+ Add Account</button></div>
           {(data.equityAccounts || []).map(acct => {
