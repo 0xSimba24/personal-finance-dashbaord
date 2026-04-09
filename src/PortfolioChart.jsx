@@ -22,6 +22,7 @@ const fmt = (n, c = "EUR") => {
 
 export default function PortfolioChart({ history, title, color = colors.accent, currency = "EUR", height = 200 }) {
   const [range, setRange] = useState("ALL");
+  const gradId = useMemo(() => `grad-${Math.random().toString(36).slice(2, 8)}`, []);
 
   const chartData = useMemo(() => {
     if (!history || history.length === 0) return [];
@@ -78,7 +79,7 @@ export default function PortfolioChart({ history, title, color = colors.accent, 
       <ResponsiveContainer width="100%" height={height}>
         <AreaChart data={chartData} margin={{ top: 5, right: 5, bottom: 5, left: 15 }}>
           <defs>
-            <linearGradient id={`grad-${title}`} x1="0" y1="0" x2="0" y2="1">
+            <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
               <stop offset="5%" stopColor={lineColor} stopOpacity={0.2} />
               <stop offset="95%" stopColor={lineColor} stopOpacity={0} />
             </linearGradient>
@@ -88,9 +89,10 @@ export default function PortfolioChart({ history, title, color = colors.accent, 
           <Tooltip
             contentStyle={{ background: colors.card, border: `1px solid ${colors.border}`, borderRadius: "6px", fontSize: "11px", fontFamily: "inherit" }}
             labelStyle={{ color: colors.textDim }}
+            itemStyle={{ color: colors.text }}
             formatter={(v) => [fmt(v, currency), "Value"]}
           />
-          <Area type="monotone" dataKey="value" stroke={lineColor} strokeWidth={2} fill={`url(#grad-${title})`} dot={false} activeDot={{ r: 4, fill: lineColor }} />
+          <Area type="monotone" dataKey="value" stroke={lineColor} strokeWidth={2} fill={`url(#${gradId})`} dot={false} activeDot={{ r: 4, fill: lineColor }} />
         </AreaChart>
       </ResponsiveContainer>
     </div>
@@ -156,6 +158,7 @@ export function MultiLineChart({ history, items, title, currency = "EUR", height
           <Tooltip
             contentStyle={{ background: colors.card, border: `1px solid ${colors.border}`, borderRadius: "6px", fontSize: "11px", fontFamily: "inherit" }}
             labelStyle={{ color: colors.textDim }}
+            itemStyle={{ color: colors.text }}
             formatter={(v, name) => [fmt(v, currency), name]}
           />
           {items.map((item, i) => (
