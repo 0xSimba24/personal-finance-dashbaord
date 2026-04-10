@@ -95,11 +95,22 @@ const fmt = (n, c = "EUR") => {
 const fmtBoth = (eurVal, rate) => `${fmt(eurVal, "EUR")} / ${fmt(eurVal * rate, "INR")}`;
 const pct = (current, target) => target > 0 ? Math.min(100, (current / target) * 100) : 0;
 
-const calcAmortization = (principal, annualRate, tenureMonths, monthsElapsed, specialPaymentsTotal = 0) => {
-  if (!principal || !annualRate || !tenureMonths || tenureMonths <= 0) return { remainingPrincipal: Math.max(0, (principal || 0) - specialPaymentsTotal), remainingInterest: 0, totalInterest: 0 };
+const calcAmortization = (principal, annualRate, tenureMonths, monthsElapsed, specialPaymentsTotal = 0, manualEMI = 0, balloonAmount = 0) => {
+  if (!principal || !tenureMonths || tenureMonths <= 0) return { remainingPrincipal: Math.max(0, (principal || 0) - specialPaymentsTotal), remainingInterest: 0, totalInterest: 0 };
   const r = annualRate / 100 / 12;
   const n = tenureMonths;
   const k = Math.min(Math.max(0, monthsElapsed), n);
+
+  // Use manual EMI if provided (for balloon loans etc)
+  if (manualEMI > 0) {
+    const principalPaidByEMI = manualEMI * k;
+    const rp = Math.max(0, principal - principalPaidByEMI - specialPaymentsTotal);
+    const totalPaidAtEnd = (manualEMI * n) + balloonAmount + specialPaymentsTotal;
+    const totalInterest = Math.max(0, totalPaidAtEnd - principal);
+    const remainingPayments = rp > balloonAmount ? Math.ceil((rp - balloonAmount) / manualEMI) : 0;
+    return { remainingPrincipal: rp, remainingInterest: Math.max(0, totalInterest * (rp / principal)), totalInterest, emi: manualEMI, monthsLeft: remainingPayments, balloonAmount };
+  }
+
   if (r === 0) {
     const rp = Math.max(0, principal - (principal / n) * k - specialPaymentsTotal);
     return { remainingPrincipal: rp, remainingInterest: 0, totalInterest: 0 };
@@ -107,7 +118,6 @@ const calcAmortization = (principal, annualRate, tenureMonths, monthsElapsed, sp
   const emi = principal * r * Math.pow(1 + r, n) / (Math.pow(1 + r, n) - 1);
   const rpBeforeSpecial = principal * (Math.pow(1 + r, n) - Math.pow(1 + r, k)) / (Math.pow(1 + r, n) - 1);
   const rp = Math.max(0, rpBeforeSpecial - specialPaymentsTotal);
-  // Recalculate remaining interest based on reduced principal
   const monthsLeft = rp > 0 ? Math.ceil(Math.log(emi / (emi - rp * r)) / Math.log(1 + r)) : 0;
   const ri = Math.max(0, (emi * monthsLeft) - rp);
   const totalInterest = (emi * n) - principal;
@@ -330,7 +340,7 @@ export default function App() {
 
     const totalLiabEur = data.liabilities.reduce((s, l) => {
       const spTotal = (l.specialPayments || []).reduce((s, p) => s + (p.amount || 0), 0);
-      const amort = calcAmortization(l.totalAmount, l.interestRate, l.tenureMonths, getMonthsElapsed(l.startDate), spTotal);
+      const amort = calcAmortization(l.totalAmount, l.interestRate, l.tenureMonths, getMonthsElapsed(l.startDate), spTotal, l.manualEMI || 0, l.balloonAmount || 0);
       return s + eur(amort.remainingPrincipal, l.currency);
     }, 0);
 
@@ -534,7 +544,7 @@ export default function App() {
     let histLiab = 0;
     updated.liabilities.forEach(l => {
       const spTotal = (l.specialPayments || []).reduce((s, p) => s + (p.amount || 0), 0);
-      const amort = calcAmortization(l.totalAmount, l.interestRate, l.tenureMonths, getMonthsElapsed(l.startDate), spTotal);
+      const amort = calcAmortization(l.totalAmount, l.interestRate, l.tenureMonths, getMonthsElapsed(l.startDate), spTotal, l.manualEMI || 0, l.balloonAmount || 0);
       histLiab += toEur(amort.remainingPrincipal, l.currency, histRate, histUsdRate);
     });
     histEntry.liabilities = histLiab;
@@ -1137,7 +1147,7 @@ export default function App() {
         {data.liabilities.map(l => {
           const elapsed = getMonthsElapsed(l.startDate);
           const spTotal = (l.specialPayments || []).reduce((s, p) => s + (p.amount || 0), 0);
-          const amort = calcAmortization(l.totalAmount, l.interestRate, l.tenureMonths, elapsed, spTotal);
+          const amort = calcAmortization(l.totalAmount, l.interestRate, l.tenureMonths, elapsed, spTotal, l.manualEMI || 0, l.balloonAmount || 0);
           const remaining = amort.monthsLeft != null ? amort.monthsLeft : Math.max(0, l.tenureMonths - elapsed);
           const prog = pct(elapsed, l.tenureMonths);
           return (
@@ -1146,12 +1156,17 @@ export default function App() {
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "10px", marginTop: "12px" }}>
                 <div><div style={{ fontSize: "10px", color: colors.textDim }}>Principal</div><ECell value={l.totalAmount} type="number" onChange={v => updateItem("liabilities", l.id, "totalAmount", v)} /></div>
                 <div><div style={{ fontSize: "10px", color: colors.textDim }}>Interest Rate (%)</div><ECell value={l.interestRate} type="number" onChange={v => updateItem("liabilities", l.id, "interestRate", v)} /></div>
-                <div><div style={{ fontSize: "10px", color: colors.textDim }}>Calculated EMI</div><div style={{ fontSize: "13px", fontWeight: 600 }}>{amort.emi ? fmt(amort.emi, l.currency) : "—"}</div></div>
+                <div><div style={{ fontSize: "10px", color: colors.textDim }}>Monthly EMI {l.manualEMI ? "" : "(auto)"}</div>
+                  {l.manualEMI ? <ECell value={l.manualEMI} type="number" onChange={v => updateItem("liabilities", l.id, "manualEMI", v)} />
+                  : <div style={{ display: "flex", alignItems: "center", gap: "6px" }}><span style={{ fontSize: "13px", fontWeight: 600 }}>{amort.emi ? fmt(amort.emi, l.currency) : "—"}</span><button style={{ ...s.btnOutline, padding: "2px 6px", fontSize: "8px" }} onClick={() => updateItem("liabilities", l.id, "manualEMI", amort.emi || 0)}>Override</button></div>}
+                </div>
                 <div><div style={{ fontSize: "10px", color: colors.textDim }}>Start Date</div><input type="date" style={{ ...s.input, width: "130px" }} value={l.startDate} onChange={e => updateItem("liabilities", l.id, "startDate", e.target.value)} /></div>
                 <div><div style={{ fontSize: "10px", color: colors.textDim }}>Tenure (months)</div><ECell value={l.tenureMonths} type="number" onChange={v => updateItem("liabilities", l.id, "tenureMonths", v)} /></div>
+                <div><div style={{ fontSize: "10px", color: colors.textDim }}>Balloon Payment</div><ECell value={l.balloonAmount || 0} type="number" onChange={v => updateItem("liabilities", l.id, "balloonAmount", v)} /></div>
                 <div><div style={{ fontSize: "10px", color: colors.textDim }}>Currency</div><CurrSelect value={l.currency} onChange={v => updateItem("liabilities", l.id, "currency", v)} /></div>
+                {l.manualEMI > 0 && <div><div style={{ fontSize: "10px", color: colors.textDim }}>&nbsp;</div><button style={{ ...s.btnDanger, fontSize: "9px" }} onClick={() => updateItem("liabilities", l.id, "manualEMI", 0)}>Reset to auto EMI</button></div>}
               </div>
-              {l.totalAmount > 0 && l.tenureMonths > 0 && l.interestRate > 0 && (
+              {l.totalAmount > 0 && l.tenureMonths > 0 && (l.interestRate > 0 || l.manualEMI > 0) && (
                 <div style={{ marginTop: "14px", padding: "12px", borderRadius: "8px", background: colors.card, border: `1px solid ${colors.border}` }}>
                   <div style={{ fontSize: "11px", fontWeight: 600, color: colors.textDim, marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.5px" }}>Amortization</div>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "10px" }}>
@@ -1159,21 +1174,25 @@ export default function App() {
                     <div><div style={{ fontSize: "10px", color: colors.textDim }}>Remaining Interest</div><div style={{ fontSize: "15px", fontWeight: 700, color: colors.yellow }}>{fmt(amort.remainingInterest, l.currency)}</div></div>
                     <div><div style={{ fontSize: "10px", color: colors.textDim }}>Total Interest</div><div style={{ fontSize: "15px", fontWeight: 700, color: colors.textDim }}>{fmt(amort.totalInterest, l.currency)}</div></div>
                     <div><div style={{ fontSize: "10px", color: colors.textDim }}>Months Left</div><div style={{ fontSize: "15px", fontWeight: 700 }}>{remaining}</div></div>
+                    {(l.balloonAmount || 0) > 0 && <div><div style={{ fontSize: "10px", color: colors.textDim }}>Balloon (Schlussrate)</div><div style={{ fontSize: "15px", fontWeight: 700, color: "#f59e0b" }}>{fmt(l.balloonAmount, l.currency)}</div></div>}
                   </div>
                   {/* Principal paid back bar */}
                   {(() => {
                     const principalPaid = l.totalAmount - amort.remainingPrincipal;
                     const paidPct = l.totalAmount > 0 ? (principalPaid / l.totalAmount) * 100 : 0;
+                    const balloonPct = l.totalAmount > 0 ? ((l.balloonAmount || 0) / l.totalAmount) * 100 : 0;
                     return <div style={{ marginTop: "12px" }}>
                       <div style={s.flex}>
                         <span style={{ fontSize: "10px", color: colors.green }}>Paid: {fmt(principalPaid, l.currency)} ({paidPct.toFixed(1)}%)</span>
                         <span style={{ fontSize: "10px", color: colors.red }}>Remaining: {fmt(amort.remainingPrincipal, l.currency)}</span>
                       </div>
-                      <div style={{ ...s.progressBar, marginTop: "4px", height: "12px" }}>
-                        <div style={{ ...s.progressFill(paidPct, colors.green), height: "100%" }} />
+                      <div style={{ ...s.progressBar, marginTop: "4px", height: "12px", display: "flex" }}>
+                        <div style={{ height: "100%", borderRadius: "4px 0 0 4px", background: colors.green, width: `${paidPct}%`, transition: "width 0.5s" }} />
+                        {balloonPct > 0 && <div style={{ height: "100%", borderRadius: "0", background: "#f59e0b", width: `${balloonPct}%`, marginLeft: "auto", transition: "width 0.5s", borderRadius: "0 4px 4px 0" }} />}
                       </div>
                       <div style={{ ...s.flex, marginTop: "6px" }}>
                         <span style={{ fontSize: "10px", color: colors.textDim }}>{elapsed} months done</span>
+                        {balloonPct > 0 && <span style={{ fontSize: "10px", color: "#f59e0b" }}>Balloon: {fmt(l.balloonAmount, l.currency)}</span>}
                         <span style={{ fontSize: "10px", color: colors.textDim }}>{remaining} months left</span>
                       </div>
                     </div>;
