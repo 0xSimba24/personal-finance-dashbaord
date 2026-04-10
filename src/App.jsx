@@ -729,7 +729,7 @@ export default function App() {
               { label: "Equity", value: calc.eqValue.total, color: "#8b5cf6" },
               { label: "Cash", value: calc.cashValue.total, color: colors.green },
               { label: "Crypto", value: calc.cryptoValue.total, color: "#f59e0b" },
-              { label: "Real Estate", value: calc.propValue.total, color: "#3b82f6" },
+              { label: "Physical Assets", value: calc.propValue.total, color: "#3b82f6" },
               { label: "ESOPs", value: calc.esopValue.total, color: "#ec4899" },
             ].filter(x => x.value > 0)}
           />
@@ -928,7 +928,7 @@ export default function App() {
 
   // ─── PORTFOLIO ───
   const renderPortfolio = () => {
-    const subTabs = [{ key: "mf", label: "MFs / ETFs" }, { key: "eq", label: "Equity" }, { key: "cash", label: "Cash & Savings" }, { key: "crypto", label: "Crypto" }, { key: "re", label: "Real Estate" }, { key: "esop", label: "ESOPs" }];
+    const subTabs = [{ key: "mf", label: "MFs / ETFs" }, { key: "eq", label: "Equity" }, { key: "cash", label: "Cash & Savings" }, { key: "crypto", label: "Crypto" }, { key: "re", label: "Physical Assets" }, { key: "esop", label: "ESOPs" }];
 
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
@@ -1088,7 +1088,7 @@ export default function App() {
         {subTab === "re" && <div style={s.card}>
           <div style={s.flex}><div style={s.h2}>Real Estate</div><button style={s.btn} onClick={() => update("realEstate", [...(data.realEstate || []), { id: uid(), name: "Property", value: 0, currency: "INR", liquid: false }])}>+ Add</button></div>
           {(data.priceHistory || []).length >= 2 && (data.priceHistory || []).some(h => h.reTotal > 0) && <div style={{ marginBottom: "14px" }}>
-            <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: h.reTotal || 0 }))} title="Real Estate Total" color="#3b82f6" />
+            <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: h.reTotal || 0 }))} title="Physical Assets Total" color="#3b82f6" />
           </div>}
           {(!data.realEstate || data.realEstate.length === 0) ? <div style={{ fontSize: "12px", color: colors.textDim, padding: "12px 0" }}>No real estate</div> :
           <table style={s.table}><thead><tr><th style={s.th}>Name</th><th style={s.th}>Value</th><th style={s.th}>Curr</th><th style={s.th}>EUR</th><th style={s.th}>Liq</th><th style={s.th}></th></tr></thead>
@@ -1180,19 +1180,16 @@ export default function App() {
                   {(() => {
                     const principalPaid = l.totalAmount - amort.remainingPrincipal;
                     const paidPct = l.totalAmount > 0 ? (principalPaid / l.totalAmount) * 100 : 0;
-                    const balloonPct = l.totalAmount > 0 ? ((l.balloonAmount || 0) / l.totalAmount) * 100 : 0;
                     return <div style={{ marginTop: "12px" }}>
                       <div style={s.flex}>
                         <span style={{ fontSize: "10px", color: colors.green }}>Paid: {fmt(principalPaid, l.currency)} ({paidPct.toFixed(1)}%)</span>
                         <span style={{ fontSize: "10px", color: colors.red }}>Remaining: {fmt(amort.remainingPrincipal, l.currency)}</span>
                       </div>
-                      <div style={{ ...s.progressBar, marginTop: "4px", height: "12px", display: "flex" }}>
-                        <div style={{ height: "100%", borderRadius: "4px 0 0 4px", background: colors.green, width: `${paidPct}%`, transition: "width 0.5s" }} />
-                        {balloonPct > 0 && <div style={{ height: "100%", borderRadius: "0", background: "#f59e0b", width: `${balloonPct}%`, marginLeft: "auto", transition: "width 0.5s", borderRadius: "0 4px 4px 0" }} />}
+                      <div style={{ ...s.progressBar, marginTop: "4px", height: "12px" }}>
+                        <div style={{ height: "100%", borderRadius: "4px", background: colors.green, width: `${paidPct}%`, transition: "width 0.5s" }} />
                       </div>
                       <div style={{ ...s.flex, marginTop: "6px" }}>
                         <span style={{ fontSize: "10px", color: colors.textDim }}>{elapsed} months done</span>
-                        {balloonPct > 0 && <span style={{ fontSize: "10px", color: "#f59e0b" }}>Balloon: {fmt(l.balloonAmount, l.currency)}</span>}
                         <span style={{ fontSize: "10px", color: colors.textDim }}>{remaining} months left</span>
                       </div>
                     </div>;
