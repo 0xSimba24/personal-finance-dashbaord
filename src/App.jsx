@@ -1153,7 +1153,13 @@ export default function App() {
           return (
             <div key={l.id} style={{ padding: "14px", borderRadius: "8px", background: colors.cardAlt, border: `1px solid ${colors.border}` }}>
               <div style={s.flex}><ECell value={l.name} onChange={v => updateItem("liabilities", l.id, "name", v)} style={{ fontSize: "14px", fontWeight: 600 }} /><button style={s.btnDanger} onClick={() => removeItem("liabilities", l.id)}>×</button></div>
-              {"linkedAsset" in l ? <div style={{ fontSize: "10px", color: colors.textDim, marginTop: "2px" }}>Secured by: <ECell value={l.linkedAsset || ""} onChange={v => updateItem("liabilities", l.id, "linkedAsset", v)} style={{ fontSize: "10px", color: colors.accent }} /></div>
+              {"linkedAsset" in l ? <div style={{ fontSize: "10px", color: colors.textDim, marginTop: "2px" }}>Secured by: <select style={{ ...s.select, fontSize: "10px", color: colors.accent }} value={l.linkedAsset || ""} onChange={e => updateItem("liabilities", l.id, "linkedAsset", e.target.value)}>
+                <option value="">— Select asset —</option>
+                {(data.realEstate || []).map(a => <option key={a.id} value={a.name}>{a.name} ({fmt(a.value, a.currency)})</option>)}
+                {data.cashSavings.filter(c => c.amount > 0).map(a => <option key={a.id} value={a.name}>{a.name} ({fmt(a.amount, a.currency)})</option>)}
+                {data.mutualFunds.filter(f => f.units > 0).map(a => <option key={a.id} value={a.name}>{a.name}</option>)}
+                {(data.equityAccounts || []).map(a => <option key={a.id} value={a.name}>{a.name} ({a.stocks.length} stocks)</option>)}
+              </select></div>
               : <div style={{ marginTop: "2px" }}><button style={{ ...s.btnOutline, padding: "2px 6px", fontSize: "8px" }} onClick={() => updateItem("liabilities", l.id, "linkedAsset", "")}>+ Link Asset</button></div>}
               {l.notes ? <div style={{ fontSize: "9px", color: colors.textMuted, fontStyle: "italic", marginTop: "2px" }}><ECell value={l.notes} onChange={v => updateItem("liabilities", l.id, "notes", v)} style={{ fontSize: "9px", color: colors.textMuted, fontStyle: "italic" }} /></div> : <div style={{ marginTop: "2px" }}><span style={{ fontSize: "8px", color: colors.border, cursor: "pointer" }} onClick={() => updateItem("liabilities", l.id, "notes", "Add note...")}>+ note</span></div>}
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "10px", marginTop: "12px" }}>
