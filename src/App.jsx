@@ -1151,7 +1151,24 @@ export default function App() {
                     <div><div style={{ fontSize: "10px", color: colors.textDim }}>Total Interest</div><div style={{ fontSize: "15px", fontWeight: 700, color: colors.textDim }}>{fmt(amort.totalInterest, l.currency)}</div></div>
                     <div><div style={{ fontSize: "10px", color: colors.textDim }}>Months Left</div><div style={{ fontSize: "15px", fontWeight: 700 }}>{remaining}</div></div>
                   </div>
-                  <div style={{ marginTop: "10px" }}><div style={s.flex}><span style={{ fontSize: "10px", color: colors.textDim }}>Paid</span><span style={{ fontSize: "10px", color: colors.textDim }}>{remaining} mo left</span></div><div style={s.progressBar}><div style={s.progressFill(prog, colors.red)} /></div></div>
+                  {/* Principal paid back bar */}
+                  {(() => {
+                    const principalPaid = l.totalAmount - amort.remainingPrincipal;
+                    const paidPct = l.totalAmount > 0 ? (principalPaid / l.totalAmount) * 100 : 0;
+                    return <div style={{ marginTop: "12px" }}>
+                      <div style={s.flex}>
+                        <span style={{ fontSize: "10px", color: colors.green }}>Paid: {fmt(principalPaid, l.currency)} ({paidPct.toFixed(1)}%)</span>
+                        <span style={{ fontSize: "10px", color: colors.red }}>Remaining: {fmt(amort.remainingPrincipal, l.currency)}</span>
+                      </div>
+                      <div style={{ ...s.progressBar, marginTop: "4px", height: "12px" }}>
+                        <div style={{ ...s.progressFill(paidPct, colors.green), height: "100%" }} />
+                      </div>
+                      <div style={{ ...s.flex, marginTop: "6px" }}>
+                        <span style={{ fontSize: "10px", color: colors.textDim }}>{elapsed} months done</span>
+                        <span style={{ fontSize: "10px", color: colors.textDim }}>{remaining} months left</span>
+                      </div>
+                    </div>;
+                  })()}
                 </div>
               )}
             </div>
