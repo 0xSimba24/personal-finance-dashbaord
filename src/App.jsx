@@ -63,7 +63,7 @@ const defaultData = {
     { id: uid(), name: "COPX SIP", amount: 150, currency: "EUR", phase: 2 },
   ],
   liabilities: [
-    { id: uid(), name: "Personal Loan", totalAmount: 0, interestRate: 4.7, monthlyEMI: 0, startDate: "", tenureMonths: 0, currency: "EUR" },
+    { id: uid(), name: "Personal Loan", totalAmount: 0, interestRate: 4.7, monthlyEMI: 0, startDate: "", tenureMonths: 0, currency: "EUR", specialPayments: [] },
   ],
   snapshots: [],
   priceHistory: [],
@@ -95,17 +95,23 @@ const fmt = (n, c = "EUR") => {
 const fmtBoth = (eurVal, rate) => `${fmt(eurVal, "EUR")} / ${fmt(eurVal * rate, "INR")}`;
 const pct = (current, target) => target > 0 ? Math.min(100, (current / target) * 100) : 0;
 
-const calcAmortization = (principal, annualRate, tenureMonths, monthsElapsed) => {
-  if (!principal || !annualRate || !tenureMonths || tenureMonths <= 0) return { remainingPrincipal: principal || 0, remainingInterest: 0, totalInterest: 0 };
+const calcAmortization = (principal, annualRate, tenureMonths, monthsElapsed, specialPaymentsTotal = 0) => {
+  if (!principal || !annualRate || !tenureMonths || tenureMonths <= 0) return { remainingPrincipal: Math.max(0, (principal || 0) - specialPaymentsTotal), remainingInterest: 0, totalInterest: 0 };
   const r = annualRate / 100 / 12;
   const n = tenureMonths;
   const k = Math.min(Math.max(0, monthsElapsed), n);
-  if (r === 0) return { remainingPrincipal: principal - (principal / n) * k, remainingInterest: 0, totalInterest: 0 };
+  if (r === 0) {
+    const rp = Math.max(0, principal - (principal / n) * k - specialPaymentsTotal);
+    return { remainingPrincipal: rp, remainingInterest: 0, totalInterest: 0 };
+  }
   const emi = principal * r * Math.pow(1 + r, n) / (Math.pow(1 + r, n) - 1);
-  const rp = principal * (Math.pow(1 + r, n) - Math.pow(1 + r, k)) / (Math.pow(1 + r, n) - 1);
-  const ri = (emi * (n - k)) - rp;
+  const rpBeforeSpecial = principal * (Math.pow(1 + r, n) - Math.pow(1 + r, k)) / (Math.pow(1 + r, n) - 1);
+  const rp = Math.max(0, rpBeforeSpecial - specialPaymentsTotal);
+  // Recalculate remaining interest based on reduced principal
+  const monthsLeft = rp > 0 ? Math.ceil(Math.log(emi / (emi - rp * r)) / Math.log(1 + r)) : 0;
+  const ri = Math.max(0, (emi * monthsLeft) - rp);
   const totalInterest = (emi * n) - principal;
-  return { remainingPrincipal: Math.max(0, rp), remainingInterest: Math.max(0, ri), totalInterest: Math.max(0, totalInterest), emi };
+  return { remainingPrincipal: rp, remainingInterest: ri, totalInterest: Math.max(0, totalInterest), emi, monthsLeft };
 };
 
 const getMonthsElapsed = (startDate) => {
@@ -323,7 +329,8 @@ export default function App() {
     }, { total: 0, liquid: 0 });
 
     const totalLiabEur = data.liabilities.reduce((s, l) => {
-      const amort = calcAmortization(l.totalAmount, l.interestRate, l.tenureMonths, getMonthsElapsed(l.startDate));
+      const spTotal = (l.specialPayments || []).reduce((s, p) => s + (p.amount || 0), 0);
+      const amort = calcAmortization(l.totalAmount, l.interestRate, l.tenureMonths, getMonthsElapsed(l.startDate), spTotal);
       return s + eur(amort.remainingPrincipal, l.currency);
     }, 0);
 
@@ -526,7 +533,8 @@ export default function App() {
 
     let histLiab = 0;
     updated.liabilities.forEach(l => {
-      const amort = calcAmortization(l.totalAmount, l.interestRate, l.tenureMonths, getMonthsElapsed(l.startDate));
+      const spTotal = (l.specialPayments || []).reduce((s, p) => s + (p.amount || 0), 0);
+      const amort = calcAmortization(l.totalAmount, l.interestRate, l.tenureMonths, getMonthsElapsed(l.startDate), spTotal);
       histLiab += toEur(amort.remainingPrincipal, l.currency, histRate, histUsdRate);
     });
     histEntry.liabilities = histLiab;
@@ -1123,13 +1131,14 @@ export default function App() {
   // ─── LIABILITIES ───
   const renderLiabilities = () => (
     <div style={s.card}>
-      <div style={s.flex}><div style={s.h2}>Liabilities</div><button style={s.btn} onClick={() => addItem("liabilities", { name: "New Loan", totalAmount: 0, interestRate: 0, monthlyEMI: 0, startDate: "", tenureMonths: 0, currency: "EUR" })}>+ Add</button></div>
+      <div style={s.flex}><div style={s.h2}>Liabilities</div><button style={s.btn} onClick={() => addItem("liabilities", { name: "New Loan", totalAmount: 0, interestRate: 0, monthlyEMI: 0, startDate: "", tenureMonths: 0, currency: "EUR", specialPayments: [] })}>+ Add</button></div>
       {data.liabilities.length === 0 ? <div style={{ fontSize: "12px", color: colors.textDim, padding: "12px 0" }}>No liabilities</div> :
       <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
         {data.liabilities.map(l => {
           const elapsed = getMonthsElapsed(l.startDate);
-          const amort = calcAmortization(l.totalAmount, l.interestRate, l.tenureMonths, elapsed);
-          const remaining = Math.max(0, l.tenureMonths - elapsed);
+          const spTotal = (l.specialPayments || []).reduce((s, p) => s + (p.amount || 0), 0);
+          const amort = calcAmortization(l.totalAmount, l.interestRate, l.tenureMonths, elapsed, spTotal);
+          const remaining = amort.monthsLeft != null ? amort.monthsLeft : Math.max(0, l.tenureMonths - elapsed);
           const prog = pct(elapsed, l.tenureMonths);
           return (
             <div key={l.id} style={{ padding: "14px", borderRadius: "8px", background: colors.cardAlt, border: `1px solid ${colors.border}` }}>
@@ -1171,6 +1180,42 @@ export default function App() {
                   })()}
                 </div>
               )}
+              {/* Special Payments */}
+              <div style={{ marginTop: "14px", padding: "12px", borderRadius: "8px", background: colors.card, border: `1px solid ${colors.border}` }}>
+                <div style={s.flex}>
+                  <div style={{ fontSize: "11px", fontWeight: 600, color: colors.textDim, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                    Special Payments {spTotal > 0 && <span style={{ color: colors.green }}>({fmt(spTotal, l.currency)} total)</span>}
+                  </div>
+                  <button style={{ ...s.btnOutline, padding: "3px 8px", fontSize: "9px" }} onClick={() => {
+                    const sp = [...(l.specialPayments || []), { id: uid(), date: new Date().toISOString().slice(0, 10), amount: 0, note: "" }];
+                    updateItem("liabilities", l.id, "specialPayments", sp);
+                  }}>+ Add</button>
+                </div>
+                {(l.specialPayments || []).length === 0 ? <div style={{ fontSize: "11px", color: colors.textMuted, marginTop: "6px" }}>No special payments recorded</div> :
+                <table style={{ ...s.table, marginTop: "8px" }}>
+                  <thead><tr><th style={s.th}>Date</th><th style={s.th}>Amount</th><th style={s.th}>Note</th><th style={s.th}></th></tr></thead>
+                  <tbody>{(l.specialPayments || []).map((sp, idx) => (
+                    <tr key={sp.id || idx}>
+                      <td style={s.td}><input type="date" style={{ ...s.input, width: "130px" }} value={sp.date} onChange={e => {
+                        const sps = [...(l.specialPayments || [])]; sps[idx] = { ...sps[idx], date: e.target.value };
+                        updateItem("liabilities", l.id, "specialPayments", sps);
+                      }} /></td>
+                      <td style={s.td}><ECell value={sp.amount} type="number" onChange={v => {
+                        const sps = [...(l.specialPayments || [])]; sps[idx] = { ...sps[idx], amount: v };
+                        updateItem("liabilities", l.id, "specialPayments", sps);
+                      }} /></td>
+                      <td style={s.td}><ECell value={sp.note || ""} onChange={v => {
+                        const sps = [...(l.specialPayments || [])]; sps[idx] = { ...sps[idx], note: v };
+                        updateItem("liabilities", l.id, "specialPayments", sps);
+                      }} /></td>
+                      <td style={s.td}><button style={s.btnDanger} onClick={() => {
+                        const sps = [...(l.specialPayments || [])]; sps.splice(idx, 1);
+                        updateItem("liabilities", l.id, "specialPayments", sps);
+                      }}>×</button></td>
+                    </tr>
+                  ))}</tbody>
+                </table>}
+              </div>
             </div>
           );
         })}
