@@ -59,8 +59,11 @@ const defaultData = {
     { id: uid(), name: "COPX", amount: 150, currency: "EUR" },
   ],
   surplusAllocation: [
-    { id: uid(), name: "EUR Buffer", amount: 1444, currency: "EUR", phase: 2 },
-    { id: uid(), name: "COPX SIP", amount: 150, currency: "EUR", phase: 2 },
+    { id: uid(), name: "EUR Buffer (Bank)", amount: 1650, currency: "EUR", phase: 2 },
+    { id: uid(), name: "COPX", amount: 400, currency: "EUR", phase: 3 },
+    { id: uid(), name: "Vacation", amount: 300, currency: "EUR", phase: 3 },
+    { id: uid(), name: "Kid/Life Fund", amount: 300, currency: "EUR", phase: 3 },
+    { id: uid(), name: "Correction Fund", amount: 371, currency: "EUR", phase: 3 },
   ],
   liabilities: [
     { id: uid(), name: "Personal Loan", totalAmount: 0, interestRate: 4.7, monthlyEMI: 0, startDate: "", tenureMonths: 0, currency: "EUR", specialPayments: [] },
