@@ -129,7 +129,10 @@ const calcAmortization = (principal, annualRate, tenureMonths, monthsElapsed, sp
 
 const getMonthsElapsed = (startDate) => {
   if (!startDate) return 0;
-  return Math.max(0, Math.floor((Date.now() - new Date(startDate)) / (30.44 * 24 * 60 * 60 * 1000)));
+  const start = new Date(startDate);
+  const now = new Date();
+  const months = (now.getFullYear() - start.getFullYear()) * 12 + (now.getMonth() - start.getMonth());
+  return now.getDate() >= start.getDate() ? Math.max(0, months) : Math.max(0, months - 1);
 };
 
 const colors = {
