@@ -121,10 +121,11 @@ const calcAmortization = (principal, annualRate, tenureMonths, monthsElapsed, sp
   const emi = principal * r * Math.pow(1 + r, n) / (Math.pow(1 + r, n) - 1);
   const rpBeforeSpecial = principal * (Math.pow(1 + r, n) - Math.pow(1 + r, k)) / (Math.pow(1 + r, n) - 1);
   const rp = Math.max(0, rpBeforeSpecial - specialPaymentsTotal);
+  const totalInterest = Math.max(0, (emi * n) - principal);
+  const interestPaid = (emi * k) - (principal - rpBeforeSpecial);
+  const ri = Math.max(0, totalInterest - interestPaid);
   const monthsLeft = rp > 0 ? Math.ceil(Math.log(emi / (emi - rp * r)) / Math.log(1 + r)) : 0;
-  const ri = Math.max(0, (emi * monthsLeft) - rp);
-  const totalInterest = (emi * n) - principal;
-  return { remainingPrincipal: rp, remainingInterest: ri, totalInterest: Math.max(0, totalInterest), emi, monthsLeft };
+  return { remainingPrincipal: rp, remainingInterest: ri, totalInterest, emi, monthsLeft };
 };
 
 const getMonthsElapsed = (startDate) => {
