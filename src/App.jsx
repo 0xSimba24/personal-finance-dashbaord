@@ -30,8 +30,8 @@ const defaultData = {
     { id: 3, name: "Grow & Pay Down", target: 0, current: 0, status: "locked", currency: "EUR", milestones: [] },
   ],
   mutualFunds: [
-    { id: uid(), name: "PPFAS Flexi Cap", units: 0, costPrice: 0, currentPrice: 0, currency: "INR", liquid: true, schemeCode: "122639" },
-    { id: uid(), name: "PPFAS Niece", units: 0, costPrice: 0, currentPrice: 0, currency: "INR", liquid: false, schemeCode: "122639" },
+    { id: uid(), name: "PPFAS Flexi Cap", units: 0, totalInvested: 0, currentPrice: 0, currency: "INR", liquid: true, schemeCode: "122639" },
+    { id: uid(), name: "PPFAS Niece", units: 0, totalInvested: 0, currentPrice: 0, currency: "INR", liquid: false, schemeCode: "122639" },
   ],
   equityAccounts: [
     { id: uid(), name: "Zerodha", currency: "INR", stocks: [] },
@@ -217,6 +217,18 @@ export default function App() {
           return snap;
         });
         if (migrated) storage.set(STORE_KEY, merged);
+      }
+      // Migrate: convert MF costPrice to totalInvested
+      if (merged.mutualFunds) {
+        let mfMigrated = false;
+        merged.mutualFunds = merged.mutualFunds.map(f => {
+          if (f.costPrice && f.totalInvested == null) {
+            mfMigrated = true;
+            return { ...f, totalInvested: f.units * f.costPrice };
+          }
+          return f;
+        });
+        if (mfMigrated) storage.set(STORE_KEY, merged);
       }
       setData(merged);
     } else {
@@ -942,7 +954,7 @@ export default function App() {
         <div style={s.flexG}>{subTabs.map(t => <button key={t.key} style={s.tab(subTab === t.key)} onClick={() => setSubTab(t.key)}>{t.label}</button>)}</div>
 
         {subTab === "mf" && <div style={s.card}>
-          <div style={s.flex}><div style={s.h2}>Mutual Funds / ETFs</div><button style={s.btn} onClick={() => addItem("mutualFunds", { name: "New Fund", units: 0, costPrice: 0, currentPrice: 0, currency: "INR", liquid: true })}>+ Add</button></div>
+          <div style={s.flex}><div style={s.h2}>Mutual Funds / ETFs</div><button style={s.btn} onClick={() => addItem("mutualFunds", { name: "New Fund", units: 0, totalInvested: 0, currentPrice: 0, currency: "INR", liquid: true })}>+ Add</button></div>
           {(data.priceHistory || []).length >= 2 && <div style={{ marginBottom: "14px" }}>
             <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: h.mfTotal || 0 }))} title="MF / ETF Total" />
             {data.mutualFunds.filter(f => f.units > 0).length > 1 && <div style={{ marginTop: "14px" }}>
@@ -953,10 +965,12 @@ export default function App() {
               />
             </div>}
           </div>}
-          <div style={{ overflowX: "auto" }}><table style={s.table}><thead><tr><th style={s.th}>Fund</th><th style={s.th}>Curr</th><th style={s.th}>Units</th><th style={s.th}>Cost/Unit</th><th style={s.th}>Current</th><th style={s.th}>Invested</th><th style={s.th}>Value</th><th style={s.th}>P/L</th><th style={s.th}>Liq</th><th style={s.th}></th></tr></thead>
+          <div style={{ overflowX: "auto" }}><table style={s.table}><thead><tr><th style={s.th}>Fund</th><th style={s.th}>Curr</th><th style={s.th}>Units</th><th style={s.th}>Invested</th><th style={s.th}>NAV</th><th style={s.th}>Avg Cost</th><th style={s.th}>Value</th><th style={s.th}>P/L</th><th style={s.th}>Liq</th><th style={s.th}></th></tr></thead>
           <tbody>{data.mutualFunds.map(f => {
-            const inv = f.units * f.costPrice, cur = f.units * f.currentPrice, pl = cur - inv, plP = inv > 0 ? (pl / inv * 100) : 0;
-            return <tr key={f.id}><td style={s.td}><ECell value={f.name} onChange={v => updateItem("mutualFunds", f.id, "name", v)} />{f.notes ? <div style={{ fontSize: "9px", color: colors.textMuted, fontStyle: "italic", marginTop: "2px" }}><ECell value={f.notes} onChange={v => updateItem("mutualFunds", f.id, "notes", v)} style={{ fontSize: "9px", color: colors.textMuted, fontStyle: "italic" }} /></div> : <div style={{ marginTop: "2px" }}><span style={{ fontSize: "8px", color: colors.border, cursor: "pointer" }} onClick={() => updateItem("mutualFunds", f.id, "notes", "Add note...")}>+ note</span></div>}</td><td style={s.td}><CurrSelect value={f.currency} onChange={v => updateItem("mutualFunds", f.id, "currency", v)} /></td><td style={s.td}><ECell value={f.units} type="number" onChange={v => updateItem("mutualFunds", f.id, "units", v)} /></td><td style={s.td}><ECell value={f.costPrice} type="number" onChange={v => updateItem("mutualFunds", f.id, "costPrice", v)} /></td><td style={s.td}><ECell value={f.currentPrice} type="number" onChange={v => updateItem("mutualFunds", f.id, "currentPrice", v)} /></td><td style={s.td}>{fmt(inv, f.currency)}</td><td style={s.td}>{fmt(cur, f.currency)}</td><td style={s.td}><span style={{ color: pl >= 0 ? colors.green : colors.red }}>{fmt(pl, f.currency)} ({plP.toFixed(1)}%)</span></td><td style={s.td}><button style={s.liqBadge(f.liquid)} onClick={() => updateItem("mutualFunds", f.id, "liquid", !f.liquid)}>{f.liquid ? "LIQ" : "ILLIQ"}</button></td><td style={s.td}><button style={s.btnDanger} onClick={() => removeItem("mutualFunds", f.id)}>×</button></td></tr>;
+            const invested = f.totalInvested != null ? f.totalInvested : (f.units * (f.costPrice || 0));
+            const avgCost = f.units > 0 ? invested / f.units : 0;
+            const cur = f.units * f.currentPrice, pl = cur - invested, plP = invested > 0 ? (pl / invested * 100) : 0;
+            return <tr key={f.id}><td style={s.td}><ECell value={f.name} onChange={v => updateItem("mutualFunds", f.id, "name", v)} />{f.notes ? <div style={{ fontSize: "9px", color: colors.textMuted, fontStyle: "italic", marginTop: "2px" }}><ECell value={f.notes} onChange={v => updateItem("mutualFunds", f.id, "notes", v)} style={{ fontSize: "9px", color: colors.textMuted, fontStyle: "italic" }} /></div> : <div style={{ marginTop: "2px" }}><span style={{ fontSize: "8px", color: colors.border, cursor: "pointer" }} onClick={() => updateItem("mutualFunds", f.id, "notes", "Add note...")}>+ note</span></div>}</td><td style={s.td}><CurrSelect value={f.currency} onChange={v => updateItem("mutualFunds", f.id, "currency", v)} /></td><td style={s.td}><ECell value={f.units} type="number" onChange={v => updateItem("mutualFunds", f.id, "units", v)} /></td><td style={s.td}><ECell value={invested} type="number" onChange={v => updateItem("mutualFunds", f.id, "totalInvested", v)} /></td><td style={s.td}>{f.currentPrice.toLocaleString()}</td><td style={s.td}><span style={{ color: colors.textDim }}>{avgCost > 0 ? avgCost.toFixed(2) : "—"}</span></td><td style={s.td}>{fmt(cur, f.currency)}</td><td style={s.td}><span style={{ color: pl >= 0 ? colors.green : colors.red }}>{fmt(pl, f.currency)} ({plP.toFixed(1)}%)</span></td><td style={s.td}><button style={s.liqBadge(f.liquid)} onClick={() => updateItem("mutualFunds", f.id, "liquid", !f.liquid)}>{f.liquid ? "LIQ" : "ILLIQ"}</button></td><td style={s.td}><button style={s.btnDanger} onClick={() => removeItem("mutualFunds", f.id)}>×</button></td></tr>;
           })}</tbody></table></div>
           <div style={{ marginTop: "8px", fontSize: "13px", fontWeight: 600, textAlign: "right" }}>Total: {fmtBoth(calc.mfValue.total, rate)}</div>
         </div>}
