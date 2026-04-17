@@ -822,7 +822,7 @@ export default function App() {
               title="By Asset Class"
               segments={[
                 { label: "MFs / ETFs", value: pick(calc.mfValue), color: "#6366f1" },
-                { label: "Equity", value: pick(calc.eqValue), color: "#8b5cf6" },
+                { label: "Direct Equity", value: pick(calc.eqValue), color: "#8b5cf6" },
                 { label: "Cash", value: pick(calc.cashValue), color: colors.green },
                 { label: "Crypto", value: pick(calc.cryptoValue), color: "#f59e0b" },
                 { label: "Physical Assets", value: pick(calc.propValue), color: "#3b82f6" },
@@ -1078,7 +1078,7 @@ export default function App() {
 
   // ─── PORTFOLIO ───
   const renderPortfolio = () => {
-    const subTabs = [{ key: "mf", label: "MFs / ETFs" }, { key: "eq", label: "Equity" }, { key: "cash", label: "Cash & Savings" }, { key: "crypto", label: "Crypto" }, { key: "re", label: "Physical Assets" }, { key: "esop", label: "ESOPs" }];
+    const subTabs = [{ key: "mf", label: "MFs / ETFs" }, { key: "eq", label: "Direct Equity" }, { key: "cash", label: "Cash & Savings" }, { key: "crypto", label: "Crypto" }, { key: "re", label: "Physical Assets" }, { key: "esop", label: "ESOPs" }];
 
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
@@ -1108,7 +1108,7 @@ export default function App() {
 
         {subTab === "eq" && <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
           {(data.priceHistory || []).length >= 2 && <div style={s.card}>
-            <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: h.eqTotal || 0 }))} title="Equity Total" color="#8b5cf6" />
+            <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: h.eqTotal || 0 }))} title="Direct Equity Total" color="#8b5cf6" />
             {(data.equityAccounts || []).filter(a => a.stocks.some(st => st.quantity > 0)).length > 1 && <div style={{ marginTop: "14px" }}>
               <MultiLineChart
                 history={data.priceHistory}
@@ -1117,7 +1117,7 @@ export default function App() {
               />
             </div>}
           </div>}
-          <div style={s.flex}><div style={s.h2}>Equity Accounts</div><button style={s.btn} onClick={() => addItem("equityAccounts", { name: "New Account", currency: "INR", stocks: [] })}>+ Add Account</button></div>
+          <div style={s.flex}><div style={s.h2}>Direct Equity Accounts</div><button style={s.btn} onClick={() => addItem("equityAccounts", { name: "New Account", currency: "INR", stocks: [] })}>+ Add Account</button></div>
           {(data.equityAccounts || []).map(acct => {
             const acctCurrency = acct.currency || "INR";
             const acctNativeTotal = acct.stocks.reduce((s, st) => s + st.quantity * st.currentPrice, 0);
@@ -1211,7 +1211,7 @@ export default function App() {
             </div>
             );
           })}
-          <div style={{ fontSize: "13px", fontWeight: 600, textAlign: "right" }}>All Equity: {fmtBoth(calc.eqValue.total, rate)}</div>
+          <div style={{ fontSize: "13px", fontWeight: 600, textAlign: "right" }}>All Direct Equity: {fmtBoth(calc.eqValue.total, rate)}</div>
         </div>}
 
         {subTab === "cash" && <div style={s.card}>
