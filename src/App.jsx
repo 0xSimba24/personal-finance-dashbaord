@@ -659,47 +659,49 @@ export default function App() {
 
     return (
     <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-      {showBackupWarning && <div style={{ padding: "10px 14px", borderRadius: "8px", background: `${colors.yellow}12`, border: `1px solid ${colors.yellow}30`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span style={{ fontSize: "11px", color: colors.yellow }}>
-          {daysSinceExport === null ? "⚠ You haven't exported a backup yet." : `⚠ Last backup was ${daysSinceExport} days ago.`} Your data lives only in this browser.
+      {showBackupWarning && <div style={{ padding: "10px 14px", background: `${colors.accent}12`, border: `1px solid ${colors.accent}40`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span style={{ fontSize: "10px", color: colors.accent, letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'IBM Plex Mono', monospace" }}>
+          ⚠ {daysSinceExport === null ? "No backup yet" : `Last backup was ${daysSinceExport} days ago`} · Your data lives only in this browser
         </span>
-        <button style={{ ...s.btnOutline, borderColor: colors.yellow, color: colors.yellow, padding: "4px 10px", fontSize: "10px" }} onClick={exportData}>💾 Export Now</button>
+        <button style={{ ...s.btnOutline, borderColor: colors.accent, color: colors.accent }} onClick={exportData}>💾 EXPORT NOW</button>
       </div>}
-      <div style={s.card}>
-        <div style={s.flex}>
-          <div><div style={s.h3}>Net Worth</div><div style={s.bigNum}>{fmtBoth(calc.netWorth, rate)}</div></div>
-          <div style={{ textAlign: "right" }}>
-            <div style={s.h3}>Exchange Rate</div>
-            <div style={s.flexG}>
-              <span style={{ fontSize: "12px", color: colors.textDim }}>1 EUR =</span>
-              <span style={{ fontSize: "14px", fontWeight: 600 }}>{data.settings.eurToInr?.toFixed(2) || "—"}</span>
-              <span style={{ fontSize: "12px", color: colors.textDim }}>INR</span>
-              <button style={{ ...s.btnOutline, padding: "3px 8px", fontSize: "9px" }} onClick={async () => {
-                const rates = await fetchExchangeRates();
-                if (rates.eurToInr) update("settings", { ...data.settings, eurToInr: rates.eurToInr, eurToUsd: rates.eurToUsd || data.settings.eurToUsd });
-              }}>↻ Live</button>
-            </div>
-          </div>
+
+      {/* KPI STRIP */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: "1px", background: colors.border, border: `1px solid ${colors.border}` }}>
+        <div style={{ background: colors.card, padding: "14px 16px" }}>
+          <div style={s.h3}>Net Worth</div>
+          <div style={s.bigNum}>{fmt(calc.netWorth)}</div>
+          <div style={{ fontSize: "10px", color: colors.textMuted, marginTop: "2px" }}>{fmt(calc.netWorth * rate, "INR")}</div>
+        </div>
+        <div style={{ background: colors.card, padding: "14px 16px" }}>
+          <div style={s.h3}>Liquid</div>
+          <div style={{ ...s.bigNum, color: colors.green }}>{fmt(calc.liquidNW)}</div>
+          <div style={{ fontSize: "10px", color: colors.textMuted, marginTop: "2px" }}>{fmt(calc.liquidNW * rate, "INR")}</div>
+        </div>
+        <div style={{ background: colors.card, padding: "14px 16px" }}>
+          <div style={s.h3}>Illiquid</div>
+          <div style={{ ...s.bigNum, color: colors.violet }}>{fmt(calc.illiquidNW)}</div>
+          <div style={{ fontSize: "10px", color: colors.textMuted, marginTop: "2px" }}>{fmt(calc.illiquidNW * rate, "INR")}</div>
+        </div>
+        <div style={{ background: colors.card, padding: "14px 16px" }}>
+          <div style={s.h3}>Liabilities</div>
+          <div style={{ ...s.bigNum, color: colors.red }}>{fmt(calc.totalLiabEur)}</div>
+          <div style={{ fontSize: "10px", color: colors.textMuted, marginTop: "2px" }}>{fmt(calc.totalLiabEur * rate, "INR")}</div>
+        </div>
+        <div style={{ background: colors.card, padding: "14px 16px" }}>
+          <div style={s.h3}>Surplus · {calc.totalIncomeEur > 0 ? ((calc.surplus / calc.totalIncomeEur) * 100).toFixed(0) : 0}%</div>
+          <div style={{ ...s.bigNum, color: colors.accent }}>{fmt(calc.surplus)}</div>
+          <div style={{ fontSize: "9px", color: colors.textMuted, marginTop: "2px", fontFamily: "'IBM Plex Mono', monospace" }}>IN {fmt(calc.totalIncomeEur)} · EX {fmt(calc.totalFixedEur)} · SIP {fmt(calc.totalSipsEur)}</div>
         </div>
       </div>
-      {/* Monthly Summary */}
-      <div style={s.card}>
-        <div style={s.h3}>This Month</div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "12px", marginTop: "10px" }}>
-          <div><div style={{ fontSize: "10px", color: colors.textDim, textTransform: "uppercase" }}>Income</div><div style={{ fontSize: "18px", fontWeight: 700, color: colors.green, marginTop: "4px" }}>{fmt(calc.totalIncomeEur)}</div></div>
-          <div><div style={{ fontSize: "10px", color: colors.textDim, textTransform: "uppercase" }}>Expenses</div><div style={{ fontSize: "18px", fontWeight: 700, color: colors.red, marginTop: "4px" }}>{fmt(calc.totalFixedEur)}</div></div>
-          <div><div style={{ fontSize: "10px", color: colors.textDim, textTransform: "uppercase" }}>SIPs</div><div style={{ fontSize: "18px", fontWeight: 700, color: colors.yellow, marginTop: "4px" }}>{fmt(calc.totalSipsEur)}</div></div>
-          <div><div style={{ fontSize: "10px", color: colors.textDim, textTransform: "uppercase" }}>Surplus ({calc.totalIncomeEur > 0 ? ((calc.surplus / calc.totalIncomeEur) * 100).toFixed(0) : 0}%)</div><div style={{ fontSize: "18px", fontWeight: 700, color: colors.accent, marginTop: "4px" }}>{fmt(calc.surplus)}</div></div>
-        </div>
-      </div>
-      {(data.priceHistory || []).length >= 2 && <div style={s.card}>
-        <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: h.netWorth || 0 }))} title="Net Worth" height={160} />
-      </div>}
-      <div style={s.grid3}>
-        <div style={s.card}><div style={s.h3}>Liquid Assets</div><div style={{ fontSize: "20px", fontWeight: 700, color: colors.green }}>{fmt(calc.liquidNW)}</div><div style={{ fontSize: "11px", color: colors.textDim }}>{fmt(calc.liquidNW * rate, "INR")}</div></div>
-        <div style={s.card}><div style={s.h3}>Illiquid Assets</div><div style={{ fontSize: "20px", fontWeight: 700, color: colors.yellow }}>{fmt(calc.illiquidNW)}</div><div style={{ fontSize: "11px", color: colors.textDim }}>{fmt(calc.illiquidNW * rate, "INR")}</div></div>
-        <div style={s.card}><div style={s.h3}>Total Liabilities</div><div style={{ fontSize: "20px", fontWeight: 700, color: colors.red }}>{fmt(calc.totalLiabEur)}</div><div style={{ fontSize: "11px", color: colors.textDim }}>{fmt(calc.totalLiabEur * rate, "INR")}</div></div>
-      </div>
+
+      {/* TWO-COLUMN GRID */}
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(280px, 380px)", gap: "14px" }} className="overview-grid">
+        <div style={{ display: "flex", flexDirection: "column", gap: "14px", minWidth: 0 }}>
+          {/* Main column */}
+          {(data.priceHistory || []).length >= 2 && <div style={s.card}>
+            <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: h.netWorth || 0 }))} title="Net Worth" height={200} />
+          </div>}
 
       {/* Daily Movers */}
       {(() => {
@@ -797,7 +799,10 @@ export default function App() {
           </div>
         );
       })()}
+        </div>{/* end left column */}
 
+        <div style={{ display: "flex", flexDirection: "column", gap: "14px", minWidth: 0 }}>
+          {/* Right rail */}
       <div style={s.card}>
         <div style={s.flex}>
           <div style={s.h2}>Portfolio Allocation</div>
@@ -821,7 +826,7 @@ export default function App() {
         {(() => {
           const useL = allocFilter.liquid, useI = allocFilter.illiquid;
           const pick = (v) => (useL && useI) ? v.total : useL ? v.liquid : (v.total - v.liquid);
-          return <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px", marginTop: "12px" }}>
+          return <div style={{ display: "flex", flexDirection: "column", gap: "20px", marginTop: "12px" }}>
             {/* Asset allocation donut */}
             <DonutChart
               title="By Asset Class"
@@ -913,6 +918,8 @@ export default function App() {
           })}
         </div>
       </div>
+        </div>{/* end right rail */}
+      </div>{/* end two-column grid */}
 
       {/* Goals Timeline */}
       <div style={s.card}>
@@ -944,23 +951,7 @@ export default function App() {
         </div>}
       </div>
 
-      <div style={{ ...s.flexG, justifyContent: "flex-end", position: "relative" }}>
-        <button style={{ ...s.btn, background: "#6366f1" }} onClick={refreshPrices} disabled={refreshing}>
-          {refreshing ? "⏳ Refreshing..." : "🔄 Refresh Prices"}
-        </button>
-        <button style={s.btn} onClick={takeSnapshot}>📸 Save Snapshot</button>
-        <div style={{ position: "relative" }}>
-          <button style={s.btnOutline} onClick={() => setShowSettingsMenu(!showSettingsMenu)}>⚙ Settings ▾</button>
-          {showSettingsMenu && <div style={{ position: "absolute", top: "100%", right: 0, marginTop: "4px", background: colors.card, border: `1px solid ${colors.border}`, borderRadius: "6px", padding: "4px", zIndex: 10, display: "flex", flexDirection: "column", gap: "2px", minWidth: "180px", boxShadow: "0 4px 12px rgba(0,0,0,0.3)" }}>
-            <button style={{ ...s.btnOutline, textAlign: "left", borderColor: "transparent" }} onClick={() => { setShowPriceSetup(!showPriceSetup); setShowSettingsMenu(false); }}>⚙ Price Feed Setup</button>
-            <button style={{ ...s.btnOutline, textAlign: "left", borderColor: "transparent" }} onClick={() => { exportData(); setShowSettingsMenu(false); }}>💾 Export Data</button>
-            <button style={{ ...s.btnOutline, textAlign: "left", borderColor: "transparent" }} onClick={() => { importData(); setShowSettingsMenu(false); }}>📂 Import Data</button>
-            <div style={{ borderTop: `1px solid ${colors.border}`, margin: "4px 0" }} />
-            <button style={{ ...s.btnDanger, textAlign: "left", background: "transparent", border: "none" }} onClick={() => { if (confirm("Reset all data?")) save(defaultData); setShowSettingsMenu(false); }}>Reset All Data</button>
-          </div>}
-        </div>
-      </div>
-      {refreshMsg && <div style={{ padding: "8px 14px", borderRadius: "6px", background: `${colors.accent}15`, border: `1px solid ${colors.accent}30`, fontSize: "11px", color: colors.accent }}>{refreshMsg}</div>}
+      {refreshMsg && <div style={{ padding: "8px 14px", background: `${colors.accent}15`, border: `1px solid ${colors.accent}30`, fontSize: "11px", color: colors.accent, letterSpacing: "0.05em" }}>{refreshMsg}</div>}
 
       {showPriceSetup && <div style={s.card}>
         <div style={s.h2}>Price Feed Setup</div>
@@ -1445,18 +1436,87 @@ export default function App() {
     );
   };
 
+  const activePhaseForStrip = data.phases.find(p => p.status === "active");
+  const phaseProgressPct = activePhaseForStrip && activePhaseForStrip.target > 0 ? (activePhaseForStrip.current / activePhaseForStrip.target * 100) : 0;
+
+  // Portfolio today from daily movers
+  let portfolioTodayAmt = 0, portfolioTodayPct = 0;
+  data.crypto.forEach(c => {
+    if (c.quantity > 0 && c.dailyChangePct != null) {
+      const val = c.quantity * c.currentPrice;
+      const prevVal = val / (1 + c.dailyChangePct / 100);
+      portfolioTodayAmt += toEur(val - prevVal, "USD", rate, data.settings.eurToUsd);
+    }
+  });
+  (data.equityAccounts || []).forEach(acct => acct.stocks.forEach(st => {
+    if (st.quantity > 0 && st.dailyChangePct != null) {
+      const val = st.quantity * st.currentPrice;
+      const prevVal = val / (1 + st.dailyChangePct / 100);
+      portfolioTodayAmt += toEur(val - prevVal, st.currency, rate);
+    }
+  }));
+  data.mutualFunds.forEach(f => {
+    if (f.units > 0 && f.dailyChangePct != null) {
+      const val = f.units * f.currentPrice;
+      const prevVal = val / (1 + f.dailyChangePct / 100);
+      portfolioTodayAmt += toEur(val - prevVal, f.currency, rate);
+    }
+  });
+  portfolioTodayPct = calc.grossAssets > 0 ? (portfolioTodayAmt / (calc.grossAssets - portfolioTodayAmt)) * 100 : 0;
+
+  const now = new Date();
+  const timeStr = now.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+  const dateStr = now.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }).toUpperCase();
+
   return (
     <div style={s.page}>
-      <div style={{ ...s.flex, marginBottom: "20px", flexWrap: "wrap", gap: "12px" }}>
-        <div><h1 style={s.h1}>Financial Command Center</h1><div style={{ fontSize: "11px", color: colors.textDim, marginTop: "4px" }}>Phase {data.settings.currentPhase} · NW: {fmtBoth(calc.netWorth, rate)}{data.settings.lastUpdated && <span> · Last saved: {new Date(data.settings.lastUpdated).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</span>}</div></div>
-        <div style={s.flexG}>{tabs.map(t => <button key={t.key} style={s.tab(tab === t.key)} onClick={() => setTab(t.key)}>{t.label}</button>)}</div>
+      {/* Top Strip */}
+      <div style={{ position: "sticky", top: 0, zIndex: 100, margin: "-20px -24px 16px -24px", padding: "10px 24px", background: "#000", borderBottom: `1px solid ${colors.border}`, fontFamily: "'IBM Plex Mono', monospace", fontSize: "11px", color: colors.textDim, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
+        <div style={{ display: "flex", gap: "24px", flexWrap: "wrap", alignItems: "center" }}>
+          <span style={{ fontWeight: 700, color: colors.text, letterSpacing: "-0.01em" }}>FIN.CMD</span>
+          <span>{timeStr} · {dateStr}</span>
+          <span style={{ color: colors.accent }}>● LIVE · FX 1 EUR = {data.settings.eurToInr?.toFixed(2)} INR</span>
+        </div>
+        <div style={{ display: "flex", gap: "20px", flexWrap: "wrap", alignItems: "center" }}>
+          <span>PORTF TODAY <span style={{ color: portfolioTodayAmt >= 0 ? colors.green : colors.red }}>{portfolioTodayAmt >= 0 ? "+" : ""}{portfolioTodayPct.toFixed(2)}%</span></span>
+          {activePhaseForStrip && <span>PHASE {activePhaseForStrip.id} · {phaseProgressPct.toFixed(0)}%</span>}
+          <span>NW <span style={{ color: colors.text }}>{fmt(calc.netWorth)}</span></span>
+        </div>
       </div>
+
+      {/* Tab Bar */}
+      <div style={{ display: "flex", borderBottom: `1px solid ${colors.border}`, marginBottom: "20px", gap: "4px", flexWrap: "wrap" }}>
+        {tabs.map(t => <button key={t.key} style={s.tab(tab === t.key)} onClick={() => setTab(t.key)}>{t.label}</button>)}
+      </div>
+
       {tab === "overview" && renderOverview()}
       {tab === "income" && renderIncome()}
       {tab === "portfolio" && renderPortfolio()}
       {tab === "invest" && renderInvest()}
       {tab === "liabilities" && renderLiabilities()}
       {tab === "history" && renderHistory()}
+
+      {/* Bottom Action Bar */}
+      <div style={{ marginTop: "40px", padding: "12px 0", borderTop: `1px solid ${colors.border}`, display: "flex", justifyContent: "space-between", alignItems: "center", fontFamily: "'IBM Plex Mono', monospace", fontSize: "10px", color: colors.textMuted, letterSpacing: "0.1em", textTransform: "uppercase", flexWrap: "wrap", gap: "12px" }}>
+        <div style={{ display: "flex", gap: "20px" }}>
+          <span>FX · {data.settings.eurToInr?.toFixed(2)} INR</span>
+          {data.settings.lastUpdated && <span>LAST SAVED · {new Date(data.settings.lastUpdated).toLocaleDateString("en-GB", { day: "2-digit", month: "short" }).toUpperCase()}</span>}
+        </div>
+        <div style={{ position: "relative", display: "flex", gap: "8px" }}>
+          <button style={{ ...s.btn, padding: "6px 12px" }} onClick={refreshPrices} disabled={refreshing}>{refreshing ? "⏳ REFRESHING..." : "↻ REFRESH"}</button>
+          <button style={s.btnOutline} onClick={takeSnapshot}>📸 SNAPSHOT</button>
+          <div style={{ position: "relative" }}>
+            <button style={s.btnOutline} onClick={() => setShowSettingsMenu(!showSettingsMenu)}>⚙ SETTINGS ▾</button>
+            {showSettingsMenu && <div style={{ position: "absolute", bottom: "100%", right: 0, marginBottom: "4px", background: colors.card, border: `1px solid ${colors.border}`, padding: "4px", zIndex: 10, display: "flex", flexDirection: "column", gap: "2px", minWidth: "180px" }}>
+              <button style={{ ...s.btnOutline, textAlign: "left", border: "none", padding: "6px 10px" }} onClick={() => { setShowPriceSetup(!showPriceSetup); setShowSettingsMenu(false); }}>⚙ PRICE FEED SETUP</button>
+              <button style={{ ...s.btnOutline, textAlign: "left", border: "none", padding: "6px 10px" }} onClick={() => { exportData(); setShowSettingsMenu(false); }}>💾 EXPORT DATA</button>
+              <button style={{ ...s.btnOutline, textAlign: "left", border: "none", padding: "6px 10px" }} onClick={() => { importData(); setShowSettingsMenu(false); }}>📂 IMPORT DATA</button>
+              <div style={{ borderTop: `1px solid ${colors.border}`, margin: "4px 0" }} />
+              <button style={{ ...s.btnDanger, textAlign: "left", border: "none", padding: "6px 10px", background: "transparent" }} onClick={() => { if (confirm("Reset all data?")) save(defaultData); setShowSettingsMenu(false); }}>RESET ALL DATA</button>
+            </div>}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
