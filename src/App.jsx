@@ -1103,7 +1103,17 @@ export default function App() {
             const inv = c.quantity * c.costPrice, cur = c.quantity * c.currentPrice, pl = cur - inv, plP = inv > 0 ? (pl / inv * 100) : 0;
             return <tr key={c.id}><td style={s.td}><ECell value={c.name} onChange={v => updateItem("crypto", c.id, "name", v)} />{c.notes ? <div style={{ fontSize: "9px", color: colors.textMuted, fontStyle: "italic", marginTop: "2px" }}><ECell value={c.notes} onChange={v => updateItem("crypto", c.id, "notes", v)} style={{ fontSize: "9px", color: colors.textMuted, fontStyle: "italic" }} /></div> : <div style={{ marginTop: "2px" }}><span style={{ fontSize: "8px", color: colors.border, cursor: "pointer" }} onClick={() => updateItem("crypto", c.id, "notes", "Add note...")}>+ note</span></div>}</td><td style={s.td}><ECell value={c.quantity} type="number" onChange={v => updateItem("crypto", c.id, "quantity", v)} /></td><td style={s.td}><ECell value={c.costPrice} type="number" onChange={v => updateItem("crypto", c.id, "costPrice", v)} /></td><td style={s.td}><ECell value={c.currentPrice} type="number" onChange={v => updateItem("crypto", c.id, "currentPrice", v)} /></td><td style={s.td}>{fmt(inv, c.currency)}</td><td style={s.td}>{fmt(cur, c.currency)}</td><td style={s.td}><span style={{ color: pl >= 0 ? colors.green : colors.red }}>{fmt(pl, c.currency)} ({plP.toFixed(1)}%)</span></td><td style={s.td}><button style={s.liqBadge(c.liquid)} onClick={() => updateItem("crypto", c.id, "liquid", !c.liquid)}>{c.liquid ? "LIQ" : "ILLIQ"}</button></td><td style={s.td}><button style={s.btnDanger} onClick={() => removeItem("crypto", c.id)}>×</button></td></tr>;
           })}</tbody></table></div>
-          <div style={{ marginTop: "8px", fontSize: "13px", fontWeight: 600, textAlign: "right" }}>Total: {fmtBoth(calc.cryptoValue.total, rate)}</div>
+          {(() => {
+            const liquidUsd = data.crypto.filter(c => c.liquid).reduce((s, c) => s + c.quantity * c.currentPrice, 0);
+            const illiquidUsd = data.crypto.filter(c => !c.liquid).reduce((s, c) => s + c.quantity * c.currentPrice, 0);
+            const totalUsd = liquidUsd + illiquidUsd;
+            const usdRate = data.settings.eurToUsd || 1.08;
+            return <div style={{ marginTop: "10px", display: "flex", justifyContent: "flex-end", gap: "20px", fontSize: "12px", fontWeight: 600 }}>
+              <span style={{ color: colors.green }}>Liquid: ${liquidUsd.toLocaleString("en-US", { maximumFractionDigits: 0 })} <span style={{ fontSize: "10px", color: colors.textDim }}>(€{(liquidUsd / usdRate).toLocaleString("en-US", { maximumFractionDigits: 0 })})</span></span>
+              <span style={{ color: colors.yellow }}>Illiquid: ${illiquidUsd.toLocaleString("en-US", { maximumFractionDigits: 0 })} <span style={{ fontSize: "10px", color: colors.textDim }}>(€{(illiquidUsd / usdRate).toLocaleString("en-US", { maximumFractionDigits: 0 })})</span></span>
+              <span>Total: ${totalUsd.toLocaleString("en-US", { maximumFractionDigits: 0 })} <span style={{ fontSize: "10px", color: colors.textDim }}>({fmtBoth(calc.cryptoValue.total, rate)})</span></span>
+            </div>;
+          })()}
         </div>}
 
         {subTab === "re" && <div style={s.card}>
