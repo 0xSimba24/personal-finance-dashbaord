@@ -138,35 +138,40 @@ const getMonthsElapsed = (startDate) => {
 };
 
 const colors = {
-  bg: "#0f1119", card: "#181b27", cardAlt: "#1e2235", border: "#2a2e42",
-  accent: "#22c997", accentDim: "#1a9e78", red: "#ef4444", yellow: "#eab308",
-  text: "#e2e5f0", textDim: "#8b90a5", textMuted: "#5a5f75",
-  green: "#22c997", greenBg: "rgba(34,201,151,0.1)", redBg: "rgba(239,68,68,0.1)",
+  bg: "#0a0a0a", card: "#0f0f0f", cardAlt: "#161616", border: "#1f1f1f", borderBright: "#2a2a2a",
+  gridLine: "#141414",
+  accent: "#f5a623", accentDim: "#c4841c", red: "#e25555", yellow: "#f5a623",
+  text: "#e8e8e3", textDim: "#8a8a82", textMuted: "#4a4a44",
+  green: "#4ea96a", greenBg: "rgba(78,169,106,0.08)", redBg: "rgba(226,85,85,0.08)",
+  cyan: "#4ec9e6", magenta: "#d67ab5", violet: "#9b7ed6",
 };
 
 const s = {
-  page: { fontFamily: "'JetBrains Mono', 'SF Mono', 'Fira Code', monospace", background: colors.bg, color: colors.text, minHeight: "100vh", padding: "20px" },
-  h1: { fontSize: "22px", fontWeight: 700, letterSpacing: "-0.5px", margin: 0, color: colors.text },
-  h2: { fontSize: "15px", fontWeight: 600, margin: "0 0 12px 0", color: colors.text, letterSpacing: "-0.3px" },
-  h3: { fontSize: "12px", fontWeight: 600, color: colors.textDim, textTransform: "uppercase", letterSpacing: "1px", margin: "0 0 8px 0" },
-  card: { background: colors.card, borderRadius: "10px", padding: "18px", border: `1px solid ${colors.border}` },
-  tab: (a) => ({ padding: "8px 16px", borderRadius: "6px", border: "none", cursor: "pointer", fontSize: "12px", fontWeight: 600, fontFamily: "inherit", background: a ? colors.accent : "transparent", color: a ? colors.bg : colors.textDim, transition: "all 0.2s" }),
-  btn: { padding: "6px 14px", borderRadius: "6px", border: "none", cursor: "pointer", fontSize: "11px", fontWeight: 600, fontFamily: "inherit", background: colors.accent, color: colors.bg },
-  btnOutline: { padding: "6px 14px", borderRadius: "6px", border: `1px solid ${colors.accent}`, cursor: "pointer", fontSize: "11px", fontWeight: 600, fontFamily: "inherit", background: "transparent", color: colors.accent },
-  btnDanger: { padding: "4px 10px", borderRadius: "4px", border: "none", cursor: "pointer", fontSize: "10px", fontWeight: 600, fontFamily: "inherit", background: colors.redBg, color: colors.red },
-  input: { padding: "6px 10px", borderRadius: "5px", border: `1px solid ${colors.border}`, background: colors.cardAlt, color: colors.text, fontSize: "12px", fontFamily: "inherit", outline: "none", width: "100%" },
-  select: { padding: "6px 10px", borderRadius: "5px", border: `1px solid ${colors.border}`, background: colors.cardAlt, color: colors.text, fontSize: "12px", fontFamily: "inherit", outline: "none" },
-  table: { width: "100%", borderCollapse: "collapse", fontSize: "12px" },
-  th: { textAlign: "left", padding: "8px 10px", color: colors.textDim, fontWeight: 600, fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.5px", borderBottom: `1px solid ${colors.border}` },
-  td: { padding: "8px 10px", borderBottom: `1px solid ${colors.border}20`, verticalAlign: "middle" },
-  badge: (c) => ({ display: "inline-block", padding: "2px 8px", borderRadius: "4px", fontSize: "10px", fontWeight: 600, background: c === "green" ? colors.greenBg : c === "red" ? colors.redBg : `${colors.yellow}15`, color: c === "green" ? colors.green : c === "red" ? colors.red : colors.yellow }),
-  liqBadge: (l) => ({ display: "inline-block", padding: "2px 6px", borderRadius: "3px", fontSize: "9px", fontWeight: 700, cursor: "pointer", background: l ? colors.greenBg : `${colors.yellow}15`, color: l ? colors.green : colors.yellow, border: "none", fontFamily: "inherit" }),
-  bigNum: { fontSize: "28px", fontWeight: 700, letterSpacing: "-1px", color: colors.text },
-  progressBar: { height: "8px", borderRadius: "4px", background: colors.cardAlt, overflow: "hidden", width: "100%" },
-  progressFill: (p, c = colors.accent) => ({ height: "100%", borderRadius: "4px", background: c, width: `${Math.min(100, p)}%`, transition: "width 0.5s ease" }),
+  page: { fontFamily: "'IBM Plex Mono', ui-monospace, 'SF Mono', monospace", background: colors.bg, color: colors.text, minHeight: "100vh", padding: "20px 24px 60px", fontFeatureSettings: '"tnum" on, "zero" on' },
+  h1: { fontSize: "20px", fontWeight: 700, letterSpacing: "-0.01em", margin: 0, color: colors.text, fontFamily: "'IBM Plex Mono', monospace" },
+  h2: { fontSize: "10px", fontWeight: 400, margin: 0, color: colors.text, letterSpacing: "0.14em", textTransform: "uppercase", fontFamily: "'IBM Plex Mono', monospace" },
+  h3: { fontSize: "10px", fontWeight: 400, color: colors.textDim, textTransform: "uppercase", letterSpacing: "0.14em", margin: "0 0 8px 0", fontFamily: "'IBM Plex Mono', monospace" },
+  card: { background: colors.card, borderRadius: "0", padding: "16px", border: `1px solid ${colors.border}` },
+  tab: (a) => ({ padding: "10px 16px", borderRadius: "0", border: "none", borderBottom: a ? `2px solid ${colors.accent}` : "2px solid transparent", cursor: "pointer", fontSize: "11px", fontWeight: 500, fontFamily: "'IBM Plex Mono', monospace", background: "transparent", color: a ? colors.accent : colors.textDim, letterSpacing: "0.1em", textTransform: "uppercase", transition: "none" }),
+  btn: { padding: "6px 12px", borderRadius: "0", border: `1px solid ${colors.accent}`, cursor: "pointer", fontSize: "10px", fontWeight: 500, fontFamily: "'IBM Plex Mono', monospace", background: colors.accent, color: colors.bg, letterSpacing: "0.1em", textTransform: "uppercase" },
+  btnOutline: { padding: "6px 12px", borderRadius: "0", border: `1px solid ${colors.border}`, cursor: "pointer", fontSize: "10px", fontWeight: 500, fontFamily: "'IBM Plex Mono', monospace", background: "transparent", color: colors.textDim, letterSpacing: "0.1em", textTransform: "uppercase" },
+  btnDanger: { padding: "3px 8px", borderRadius: "0", border: `1px solid ${colors.red}40`, cursor: "pointer", fontSize: "10px", fontWeight: 500, fontFamily: "'IBM Plex Mono', monospace", background: "transparent", color: colors.red, letterSpacing: "0.1em" },
+  input: { padding: "6px 10px", borderRadius: "0", border: `1px solid ${colors.border}`, background: colors.cardAlt, color: colors.text, fontSize: "12px", fontFamily: "'IBM Plex Mono', monospace", outline: "none", width: "100%" },
+  select: { padding: "6px 10px", borderRadius: "0", border: `1px solid ${colors.border}`, background: colors.cardAlt, color: colors.text, fontSize: "11px", fontFamily: "'IBM Plex Mono', monospace", outline: "none" },
+  table: { width: "100%", borderCollapse: "collapse", fontSize: "12px", fontFamily: "'IBM Plex Mono', monospace" },
+  th: { textAlign: "left", padding: "8px 10px", color: colors.textDim, fontWeight: 400, fontSize: "9px", textTransform: "uppercase", letterSpacing: "0.14em", borderBottom: `1px solid ${colors.border}`, fontFamily: "'IBM Plex Mono', monospace" },
+  td: { padding: "8px 10px", borderBottom: `1px solid ${colors.gridLine}`, verticalAlign: "middle", fontSize: "12px" },
+  badge: (c) => ({ display: "inline-block", padding: "2px 6px", borderRadius: "0", fontSize: "9px", fontWeight: 500, letterSpacing: "0.1em", textTransform: "uppercase", border: `1px solid`, background: "transparent", borderColor: c === "green" ? colors.green : c === "red" ? colors.red : colors.accent, color: c === "green" ? colors.green : c === "red" ? colors.red : colors.accent, fontFamily: "'IBM Plex Mono', monospace" }),
+  liqBadge: (l) => ({ display: "inline-block", padding: "2px 6px", borderRadius: "0", fontSize: "9px", fontWeight: 500, cursor: "pointer", background: "transparent", color: l ? colors.green : colors.violet, border: `1px solid ${l ? colors.green : colors.violet}`, fontFamily: "'IBM Plex Mono', monospace", letterSpacing: "0.1em" }),
+  bigNum: { fontSize: "24px", fontWeight: 500, letterSpacing: "-0.01em", color: colors.text, fontFamily: "'IBM Plex Mono', monospace" },
+  progressBar: { height: "6px", borderRadius: "0", background: colors.cardAlt, overflow: "hidden", width: "100%" },
+  progressFill: (p, c = colors.accent) => ({ height: "100%", borderRadius: "0", background: c, width: `${Math.min(100, p)}%`, transition: "width 0.5s ease" }),
   grid3: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "14px" },
   flex: { display: "flex", justifyContent: "space-between", alignItems: "center" },
   flexG: { display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" },
+  panelHead: { padding: "10px 16px", borderBottom: `1px solid ${colors.border}`, display: "flex", justifyContent: "space-between", alignItems: "center", margin: "-16px -16px 12px -16px", background: colors.card },
+  panelTitle: { fontSize: "10px", fontWeight: 400, color: colors.text, letterSpacing: "0.14em", textTransform: "uppercase", fontFamily: "'IBM Plex Mono', monospace" },
+  panelMeta: { fontSize: "10px", fontWeight: 400, color: colors.textDim, letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'IBM Plex Mono', monospace" },
 };
 
 const ECell = ({ value, onChange, type = "text", style = {}, multiline = false }) => {
@@ -202,9 +207,9 @@ const CurrSelect = ({ value, onChange }) => (
 
 const EXPENSE_CATEGORIES = ["Housing", "Transportation", "Utilities", "Living", "Subscriptions", "Insurance", "Loans", "Other"];
 const CATEGORY_COLORS = {
-  Housing: "#3b82f6", Transportation: "#f59e0b", Utilities: "#22c997",
-  Living: "#8b5cf6", Subscriptions: "#ec4899", Insurance: "#ef4444",
-  Loans: "#6366f1", Other: "#8b90a5"
+  Housing: "#4ec9e6", Transportation: "#f5a623", Utilities: "#4ea96a",
+  Living: "#9b7ed6", Subscriptions: "#d67ab5", Insurance: "#e25555",
+  Loans: "#8a9a5b", Other: "#8a8a82"
 };
 
 const autoCategorize = (name) => {
@@ -821,12 +826,12 @@ export default function App() {
             <DonutChart
               title="By Asset Class"
               segments={[
-                { label: "MFs / ETFs", value: pick(calc.mfValue), color: "#6366f1" },
-                { label: "Direct Equity", value: pick(calc.eqValue), color: "#8b5cf6" },
+                { label: "MFs / ETFs", value: pick(calc.mfValue), color: colors.cyan },
+                { label: "Direct Equity", value: pick(calc.eqValue), color: colors.accent },
                 { label: "Cash", value: pick(calc.cashValue), color: colors.green },
-                { label: "Crypto", value: pick(calc.cryptoValue), color: "#f59e0b" },
-                { label: "Physical Assets", value: pick(calc.propValue), color: "#3b82f6" },
-                { label: "ESOPs", value: pick(calc.esopValue), color: "#ec4899" },
+                { label: "Crypto", value: pick(calc.cryptoValue), color: colors.magenta },
+                { label: "Physical Assets", value: pick(calc.propValue), color: "#8a9a5b" },
+                { label: "ESOPs", value: pick(calc.esopValue), color: colors.violet },
               ].filter(x => x.value > 0)}
             />
             {/* Currency exposure donut */}
@@ -846,9 +851,9 @@ export default function App() {
               return <DonutChart
                 title="By Currency"
                 segments={[
-                  { label: "EUR", value: currExp.EUR || 0, color: "#3b82f6" },
-                  { label: "INR", value: currExp.INR || 0, color: "#f59e0b" },
-                  { label: "USD", value: currExp.USD || 0, color: "#22c997" },
+                  { label: "EUR", value: currExp.EUR || 0, color: colors.cyan },
+                  { label: "INR", value: currExp.INR || 0, color: colors.accent },
+                  { label: "USD", value: currExp.USD || 0, color: colors.green },
                 ].filter(x => x.value > 0)}
               />;
             })()}

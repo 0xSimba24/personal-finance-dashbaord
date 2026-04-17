@@ -1,7 +1,7 @@
 import { useState } from "react";
 
 const colors = {
-  text: "#e2e5f0", textDim: "#8b90a5", textMuted: "#5a5f75", card: "#181b27", border: "#2a2e42",
+  text: "#e8e8e3", textDim: "#8a8a82", textMuted: "#4a4a44", card: "#0f0f0f", border: "#1f1f1f",
 };
 
 const fmt = (n, c = "EUR") => {
