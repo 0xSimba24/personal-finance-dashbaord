@@ -776,7 +776,7 @@ export default function App() {
             </>}
 
             {equityMovers.length > 0 && <>
-              <div style={{ fontSize: "11px", fontWeight: 700, color: "#8b5cf6", textTransform: "uppercase", letterSpacing: "0.5px", marginTop: "14px", marginBottom: "8px" }}>Equity & MFs</div>
+              <div style={{ fontSize: "11px", fontWeight: 700, color: "#8b5cf6", textTransform: "uppercase", letterSpacing: "0.5px", marginTop: "14px", marginBottom: "8px" }}>Direct Equity & MFs</div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
                 <div>
                   <div style={{ fontSize: "10px", fontWeight: 600, color: colors.green, marginBottom: "4px" }}>Gainers</div>
