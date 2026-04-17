@@ -205,6 +205,19 @@ const CurrSelect = ({ value, onChange }) => (
   </select>
 );
 
+const PanelHead = ({ title, meta, children }) => (
+  <div style={{ padding: "10px 16px", borderBottom: `1px solid ${colors.border}`, display: "flex", justifyContent: "space-between", alignItems: "center", margin: "-16px -16px 12px -16px" }}>
+    <span style={{ fontSize: "10px", fontWeight: 400, color: colors.text, letterSpacing: "0.14em", textTransform: "uppercase", fontFamily: "'IBM Plex Mono', monospace" }}>
+      <span style={{ color: colors.accent, marginRight: "6px" }}>&gt;</span>{title}
+    </span>
+    {(meta || children) && <span style={{ fontSize: "10px", fontWeight: 400, color: colors.textDim, letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'IBM Plex Mono', monospace", display: "flex", gap: "8px", alignItems: "center" }}>{meta}{children}</span>}
+  </div>
+);
+
+const H2 = ({ children }) => (
+  <div style={s.h2}><span style={{ color: colors.accent, marginRight: "6px" }}>&gt;</span>{children}</div>
+);
+
 const EXPENSE_CATEGORIES = ["Housing", "Transportation", "Utilities", "Living", "Subscriptions", "Insurance", "Loans", "Other"];
 const CATEGORY_COLORS = {
   Housing: "#4ec9e6", Transportation: "#f5a623", Utilities: "#4ea96a",
@@ -757,7 +770,7 @@ export default function App() {
             <div style={{ ...s.flex, cursor: "pointer" }} onClick={() => setShowDailyMovers(!showDailyMovers)}>
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                 <span style={{ fontSize: "12px", color: colors.textDim, width: "16px", transition: "transform 0.2s", transform: showDailyMovers ? "rotate(90deg)" : "rotate(0deg)" }}>▶</span>
-                <div style={s.h2}>Daily Movers</div>
+                <H2>Daily Movers</H2>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                 <span style={{ fontSize: "11px", color: colors.textDim }}>Portfolio Today:</span>
@@ -805,7 +818,7 @@ export default function App() {
           {/* Right rail */}
       <div style={s.card}>
         <div style={s.flex}>
-          <div style={s.h2}>Portfolio Allocation</div>
+          <H2>Portfolio Allocation</H2>
           <div style={{ display: "flex", gap: "4px" }}>
             {[{ key: "liquid", label: "Liquid" }, { key: "illiquid", label: "Illiquid" }].map(f => {
               const active = allocFilter[f.key];
@@ -869,7 +882,7 @@ export default function App() {
       {/* Phase Progress */}
       <div style={s.card}>
         <div style={s.flex}>
-          <div style={s.h2}>Phase Progress</div>
+          <H2>Phase Progress</H2>
           <div style={s.flexG}>
             {hasNextPhase && <button style={s.btn} onClick={() => { if (confirm(`Complete Phase ${activePhase.id} and move to Phase ${data.phases[activePhaseIdx + 1].id}?`)) moveToNextPhase(); }}>→ Next Phase</button>}
             <button style={s.btnOutline} onClick={addPhase}>+ Add Phase</button>
@@ -924,7 +937,7 @@ export default function App() {
       {/* Goals Timeline */}
       <div style={s.card}>
         <div style={s.flex}>
-          <div style={s.h2}>Goals Timeline</div>
+          <H2>Goals Timeline</H2>
           <button style={s.btn} onClick={() => update("goals", [...(data.goals || []), { id: uid(), name: "New Goal", targetDate: "", notes: "" }])}>+ Add Goal</button>
         </div>
         {(!data.goals || data.goals.length === 0) ? <div style={{ fontSize: "12px", color: colors.textDim, padding: "12px 0" }}>No goals yet. Add key dates like India move, kid planned, loan payoff.</div> :
@@ -954,7 +967,7 @@ export default function App() {
       {refreshMsg && <div style={{ padding: "8px 14px", background: `${colors.accent}15`, border: `1px solid ${colors.accent}30`, fontSize: "11px", color: colors.accent, letterSpacing: "0.05em" }}>{refreshMsg}</div>}
 
       {showPriceSetup && <div style={s.card}>
-        <div style={s.h2}>Price Feed Setup</div>
+        <H2>Price Feed Setup</H2>
 
         <div style={{ marginBottom: "16px" }}>
           <div style={{ fontSize: "12px", fontWeight: 600, marginBottom: "6px" }}>Google Sheet URL (for Indian equities)</div>
@@ -1034,16 +1047,72 @@ export default function App() {
   };
 
   // ─── INCOME & EXPENSES ───
-  const renderIncome = () => (
+  const renderIncome = () => {
+    // Build monthly income vs expense data from snapshots (1 per month)
+    const monthlyData = (() => {
+      const byMonth = {};
+      (data.snapshots || []).forEach(snap => {
+        const ym = snap.date?.slice(0, 7);
+        if (!ym) return;
+        // Snapshots don't store income/expense — just use current values as placeholder
+        // Will show current month for now; over time, if we store them per snapshot, chart fills in
+        if (!byMonth[ym] || new Date(snap.date) > new Date(byMonth[ym].date)) {
+          byMonth[ym] = { date: snap.date, income: snap.totalIncome, expenses: snap.totalExpenses };
+        }
+      });
+      return Object.entries(byMonth)
+        .filter(([, v]) => v.income != null)
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .slice(-12)
+        .map(([ym, v]) => ({ ym, income: v.income, expenses: v.expenses }));
+    })();
+
+    return (
     <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
       <div style={s.card}>
-        <div style={s.flex}><div style={s.h2}>Income</div><button style={s.btn} onClick={() => addItem("income", { name: "New", amount: 0, currency: "EUR", frequency: "monthly" })}>+ Add</button></div>
+        <div style={s.flex}><H2>Income vs Expenses · 12mo</H2><span style={{ fontSize: "10px", color: colors.textDim, letterSpacing: "0.1em", textTransform: "uppercase" }}>{monthlyData.length >= 2 ? `${monthlyData.length} MO` : "FILLS AS SNAPSHOTS ACCUMULATE"}</span></div>
+        {monthlyData.length < 2 ? (
+          <div style={{ padding: "40px 20px", textAlign: "center", color: colors.textMuted, fontSize: "11px", letterSpacing: "0.1em", fontFamily: "'IBM Plex Mono', monospace" }}>
+            CURRENT: IN {fmt(calc.totalIncomeEur)} · EX {fmt(calc.totalFixedEur)} · SURPLUS {fmt(calc.totalIncomeEur - calc.totalFixedEur)}<br/>
+            <span style={{ fontSize: "10px" }}>TAKE A SNAPSHOT EACH MONTH TO BUILD TREND DATA</span>
+          </div>
+        ) : (() => {
+          const W = 700, H = 180, padL = 40, padR = 10, padT = 10, padB = 22;
+          const iw = W - padL - padR, ih = H - padT - padB;
+          const max = Math.max(...monthlyData.flatMap(d => [d.income, d.expenses]));
+          const slot = iw / monthlyData.length;
+          const bw = slot * 0.32;
+          return <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ width: "100%", height: H, display: "block", marginTop: "12px" }}>
+            {[0, 0.25, 0.5, 0.75, 1].map((t, i) => {
+              const y = padT + ih - t * ih;
+              return <line key={i} x1={padL} x2={W - padR} y1={y} y2={y} stroke={colors.gridLine} strokeWidth="1" strokeDasharray={i === 0 ? "0" : "2,4"} />;
+            })}
+            {monthlyData.map((d, i) => {
+              const cx = padL + slot * (i + 0.5);
+              const hi = (d.income / max) * ih;
+              const he = (d.expenses / max) * ih;
+              const monthLabel = new Date(d.ym + "-01").toLocaleDateString("en-US", { month: "short" }).charAt(0);
+              return <g key={i}>
+                <rect x={cx - bw - 1} y={padT + ih - hi} width={bw} height={hi} fill={colors.cyan} />
+                <rect x={cx + 1} y={padT + ih - he} width={bw} height={he} fill={colors.red} />
+                <text x={cx} y={H - 6} fontFamily="'IBM Plex Mono',monospace" fontSize="9" fill={colors.textDim} textAnchor="middle">{monthLabel}</text>
+              </g>;
+            })}
+          </svg>;
+        })()}
+        {monthlyData.length >= 2 && <div style={{ display: "flex", gap: "20px", marginTop: "12px", fontFamily: "'IBM Plex Mono', monospace", fontSize: "10px", color: colors.textDim, letterSpacing: "0.1em", textTransform: "uppercase" }}>
+          <span><span style={{ display: "inline-block", width: "10px", height: "10px", background: colors.cyan, marginRight: "6px", verticalAlign: "middle" }} />Income</span>
+          <span><span style={{ display: "inline-block", width: "10px", height: "10px", background: colors.red, marginRight: "6px", verticalAlign: "middle" }} />Expenses</span>
+        </div>}
+      </div>
+      <div style={s.card}>
+        <div style={s.flex}><H2>Income</H2><button style={s.btn} onClick={() => addItem("income", { name: "New", amount: 0, currency: "EUR", frequency: "monthly" })}>+ Add</button></div>
         <table style={s.table}><thead><tr><th style={s.th}>Source</th><th style={s.th}>Amount</th><th style={s.th}>Curr</th><th style={s.th}>Freq</th><th style={s.th}>EUR/mo</th><th style={s.th}></th></tr></thead>
         <tbody>{data.income.map(i => <tr key={i.id}><td style={s.td}><ECell value={i.name} onChange={v => updateItem("income", i.id, "name", v)} /></td><td style={s.td}><ECell value={i.amount} type="number" onChange={v => updateItem("income", i.id, "amount", v)} /></td><td style={s.td}><CurrSelect value={i.currency} onChange={v => updateItem("income", i.id, "currency", v)} /></td><td style={s.td}><select style={s.select} value={i.frequency} onChange={e => updateItem("income", i.id, "frequency", e.target.value)}><option value="monthly">Monthly</option><option value="annual">Annual</option></select></td><td style={s.td}>{fmt(toEur(i.frequency === "annual" ? i.amount / 12 : i.amount, i.currency, rate))}</td><td style={s.td}><button style={s.btnDanger} onClick={() => removeItem("income", i.id)}>×</button></td></tr>)}</tbody></table>
         <div style={{ marginTop: "8px", fontSize: "13px", fontWeight: 600, textAlign: "right" }}>Total: {fmtBoth(calc.totalIncomeEur, rate)}/mo</div>
       </div>
       <div style={s.card}>
-        <div style={s.flex}><div style={s.h2}>Fixed Expenses</div><button style={s.btn} onClick={() => addItem("fixedExpenses", { name: "New", amount: 0, currency: "EUR", frequency: "monthly", category: "Other" })}>+ Add</button></div>
+        <div style={s.flex}><H2>Fixed Expenses</H2><button style={s.btn} onClick={() => addItem("fixedExpenses", { name: "New", amount: 0, currency: "EUR", frequency: "monthly", category: "Other" })}>+ Add</button></div>
         {(() => {
           const byCategory = {};
           data.fixedExpenses.forEach(e => {
@@ -1064,13 +1133,14 @@ export default function App() {
         <div style={{ marginTop: "8px", fontSize: "13px", fontWeight: 600, textAlign: "right" }}>Total: {fmtBoth(calc.totalFixedEur, rate)}/mo</div>
       </div>
       <div style={s.card}>
-        <div style={s.flex}><div style={s.h2}>One-off Expenses</div><button style={s.btn} onClick={() => addItem("oneOffExpenses", { name: "Expense", amount: 0, currency: "EUR", date: new Date().toISOString().slice(0, 10) })}>+ Add</button></div>
+        <div style={s.flex}><H2>One-off Expenses</H2><button style={s.btn} onClick={() => addItem("oneOffExpenses", { name: "Expense", amount: 0, currency: "EUR", date: new Date().toISOString().slice(0, 10) })}>+ Add</button></div>
         {data.oneOffExpenses.length === 0 ? <div style={{ fontSize: "12px", color: colors.textDim, padding: "12px 0" }}>No one-off expenses</div> :
         <table style={s.table}><thead><tr><th style={s.th}>Item</th><th style={s.th}>Amount</th><th style={s.th}>Curr</th><th style={s.th}>Date</th><th style={s.th}></th></tr></thead>
         <tbody>{data.oneOffExpenses.map(e => <tr key={e.id}><td style={s.td}><ECell value={e.name} onChange={v => updateItem("oneOffExpenses", e.id, "name", v)} /></td><td style={s.td}><ECell value={e.amount} type="number" onChange={v => updateItem("oneOffExpenses", e.id, "amount", v)} /></td><td style={s.td}><CurrSelect value={e.currency} onChange={v => updateItem("oneOffExpenses", e.id, "currency", v)} /></td><td style={s.td}><input type="date" style={s.input} value={e.date} onChange={ev => updateItem("oneOffExpenses", e.id, "date", ev.target.value)} /></td><td style={s.td}><button style={s.btnDanger} onClick={() => removeItem("oneOffExpenses", e.id)}>×</button></td></tr>)}</tbody></table>}
       </div>
     </div>
-  );
+    );
+  };
 
   // ─── PORTFOLIO ───
   const renderPortfolio = () => {
@@ -1081,7 +1151,7 @@ export default function App() {
         <div style={s.flexG}>{subTabs.map(t => <button key={t.key} style={s.tab(subTab === t.key)} onClick={() => setSubTab(t.key)}>{t.label}</button>)}</div>
 
         {subTab === "mf" && <div style={s.card}>
-          <div style={s.flex}><div style={s.h2}>Mutual Funds / ETFs</div><button style={s.btn} onClick={() => addItem("mutualFunds", { name: "New Fund", units: 0, totalInvested: 0, currentPrice: 0, currency: "INR", liquid: true })}>+ Add</button></div>
+          <div style={s.flex}><H2>Mutual Funds / ETFs</H2><button style={s.btn} onClick={() => addItem("mutualFunds", { name: "New Fund", units: 0, totalInvested: 0, currentPrice: 0, currency: "INR", liquid: true })}>+ Add</button></div>
           {(data.priceHistory || []).length >= 2 && <div style={{ marginBottom: "14px" }}>
             <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: h.mfTotal || 0 }))} title="MF / ETF Total" />
             {data.mutualFunds.filter(f => f.units > 0).length > 1 && <div style={{ marginTop: "14px" }}>
@@ -1113,7 +1183,7 @@ export default function App() {
               />
             </div>}
           </div>}
-          <div style={s.flex}><div style={s.h2}>Direct Equity Accounts</div><button style={s.btn} onClick={() => addItem("equityAccounts", { name: "New Account", currency: "INR", stocks: [] })}>+ Add Account</button></div>
+          <div style={s.flex}><H2>Direct Equity Accounts</H2><button style={s.btn} onClick={() => addItem("equityAccounts", { name: "New Account", currency: "INR", stocks: [] })}>+ Add Account</button></div>
           {(data.equityAccounts || []).map(acct => {
             const acctCurrency = acct.currency || "INR";
             const acctNativeTotal = acct.stocks.reduce((s, st) => s + st.quantity * st.currentPrice, 0);
@@ -1211,7 +1281,7 @@ export default function App() {
         </div>}
 
         {subTab === "cash" && <div style={s.card}>
-          <div style={s.flex}><div style={s.h2}>Cash & Savings</div><button style={s.btn} onClick={() => addItem("cashSavings", { name: "New", type: "Bank", amount: 0, currency: "EUR", liquid: true })}>+ Add</button></div>
+          <div style={s.flex}><H2>Cash & Savings</H2><button style={s.btn} onClick={() => addItem("cashSavings", { name: "New", type: "Bank", amount: 0, currency: "EUR", liquid: true })}>+ Add</button></div>
           {(data.priceHistory || []).length >= 2 && <div style={{ marginBottom: "14px" }}>
             <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: h.cashTotal || 0 }))} title="Cash & Savings Total" color="#22c997" />
           </div>}
@@ -1221,7 +1291,7 @@ export default function App() {
         </div>}
 
         {subTab === "crypto" && <div style={s.card}>
-          <div style={s.flex}><div style={s.h2}>Crypto</div><button style={s.btn} onClick={() => addItem("crypto", { name: "Token", quantity: 0, costPrice: 0, currentPrice: 0, currency: "USD", liquid: true })}>+ Add</button></div>
+          <div style={s.flex}><H2>Crypto</H2><button style={s.btn} onClick={() => addItem("crypto", { name: "Token", quantity: 0, costPrice: 0, currentPrice: 0, currency: "USD", liquid: true })}>+ Add</button></div>
           {(data.priceHistory || []).length >= 2 && <div style={{ marginBottom: "14px" }}>
             <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: h.cryptoTotal || 0 }))} title="Crypto Total" color="#f59e0b" />
           </div>}
@@ -1244,7 +1314,7 @@ export default function App() {
         </div>}
 
         {subTab === "re" && <div style={s.card}>
-          <div style={s.flex}><div style={s.h2}>Real Estate</div><button style={s.btn} onClick={() => update("realEstate", [...(data.realEstate || []), { id: uid(), name: "Property", value: 0, currency: "INR", liquid: false }])}>+ Add</button></div>
+          <div style={s.flex}><H2>Real Estate</H2><button style={s.btn} onClick={() => update("realEstate", [...(data.realEstate || []), { id: uid(), name: "Property", value: 0, currency: "INR", liquid: false }])}>+ Add</button></div>
           {(data.priceHistory || []).length >= 2 && (data.priceHistory || []).some(h => h.reTotal > 0) && <div style={{ marginBottom: "14px" }}>
             <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: h.reTotal || 0 }))} title="Physical Assets Total" color="#3b82f6" />
           </div>}
@@ -1254,7 +1324,7 @@ export default function App() {
         </div>}
 
         {subTab === "esop" && <div style={s.card}>
-          <div style={s.flex}><div style={s.h2}>ESOPs</div><button style={s.btn} onClick={() => addItem("esops", { company: "Company", strikePrice: 0, quantity: 0, currentPrice: 0, vestedQty: 0, unvestedQty: 0, currency: "EUR", liquid: false })}>+ Add</button></div>
+          <div style={s.flex}><H2>ESOPs</H2><button style={s.btn} onClick={() => addItem("esops", { company: "Company", strikePrice: 0, quantity: 0, currentPrice: 0, vestedQty: 0, unvestedQty: 0, currency: "EUR", liquid: false })}>+ Add</button></div>
           {(data.priceHistory || []).length >= 2 && (data.priceHistory || []).some(h => h.esopTotal > 0) && <div style={{ marginBottom: "14px" }}>
             <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: h.esopTotal || 0 }))} title="ESOPs Total" color="#ec4899" />
           </div>}
@@ -1272,25 +1342,49 @@ export default function App() {
   const renderInvest = () => (
     <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
       <div style={s.card}>
-        <div style={s.flex}><div style={s.h2}>Monthly SIPs</div><button style={s.btn} onClick={() => addItem("sips", { name: "New SIP", amount: 0, currency: "INR" })}>+ Add</button></div>
+        <div style={s.flex}><H2>Monthly SIPs</H2><button style={s.btn} onClick={() => addItem("sips", { name: "New SIP", amount: 0, currency: "INR" })}>+ Add</button></div>
         <table style={s.table}><thead><tr><th style={s.th}>Investment</th><th style={s.th}>Amount</th><th style={s.th}>Curr</th><th style={s.th}>EUR/mo</th><th style={s.th}></th></tr></thead>
         <tbody>{data.sips.map(i => <tr key={i.id}><td style={s.td}><ECell value={i.name} onChange={v => updateItem("sips", i.id, "name", v)} /></td><td style={s.td}><ECell value={i.amount} type="number" onChange={v => updateItem("sips", i.id, "amount", v)} /></td><td style={s.td}><CurrSelect value={i.currency} onChange={v => updateItem("sips", i.id, "currency", v)} /></td><td style={s.td}>{fmt(toEur(i.amount, i.currency, rate))}</td><td style={s.td}><button style={s.btnDanger} onClick={() => removeItem("sips", i.id)}>×</button></td></tr>)}</tbody></table>
         <div style={{ marginTop: "8px", fontSize: "13px", fontWeight: 600, textAlign: "right" }}>Total: {fmtBoth(calc.totalSipsEur, rate)}/mo</div>
       </div>
       <div style={s.card}>
-        <div style={s.h2}>Surplus Breakdown</div>
-        <div style={s.grid3}>
-          <div style={{ padding: "12px", background: colors.greenBg, borderRadius: "8px" }}><div style={{ fontSize: "10px", color: colors.green }}>Income</div><div style={{ fontSize: "18px", fontWeight: 700 }}>{fmt(calc.totalIncomeEur)}</div></div>
-          <div style={{ padding: "12px", background: colors.redBg, borderRadius: "8px" }}><div style={{ fontSize: "10px", color: colors.red }}>Expenses + SIPs</div><div style={{ fontSize: "18px", fontWeight: 700 }}>{fmt(calc.totalFixedEur + calc.totalSipsEur)}</div></div>
-          <div style={{ padding: "12px", background: `${colors.accent}15`, borderRadius: "8px" }}><div style={{ fontSize: "10px", color: colors.accent }}>Surplus</div><div style={{ fontSize: "18px", fontWeight: 700 }}>{fmt(calc.surplus)}</div></div>
+        <H2>Unallocated · After Expenses + SIPs</H2>
+        <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "13px", lineHeight: 2, marginTop: "8px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <span style={{ color: colors.textDim, textTransform: "uppercase", letterSpacing: "0.1em", fontSize: "11px" }}>Income</span>
+            <span style={{ color: colors.green }}>{fmt(calc.totalIncomeEur)}</span>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <span style={{ color: colors.textDim, textTransform: "uppercase", letterSpacing: "0.1em", fontSize: "11px" }}>− Fixed Expenses</span>
+            <span style={{ color: colors.red }}>{fmt(calc.totalFixedEur)}</span>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <span style={{ color: colors.textDim, textTransform: "uppercase", letterSpacing: "0.1em", fontSize: "11px" }}>− SIPs</span>
+            <span style={{ color: colors.red }}>{fmt(calc.totalSipsEur)}</span>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", borderTop: `1px solid ${colors.border}`, paddingTop: "6px", marginTop: "6px" }}>
+            <span style={{ color: colors.textDim, textTransform: "uppercase", letterSpacing: "0.1em", fontSize: "11px" }}>= Surplus</span>
+            <span>{fmt(calc.surplus)}</span>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <span style={{ color: colors.textDim, textTransform: "uppercase", letterSpacing: "0.1em", fontSize: "11px" }}>− Allocated</span>
+            <span style={{ color: colors.red }}>{fmt(calc.totalAllocEur)}</span>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", borderTop: `2px solid ${colors.accent}`, paddingTop: "8px", marginTop: "8px", fontSize: "16px" }}>
+            <span style={{ color: colors.accent, textTransform: "uppercase", letterSpacing: "0.14em", fontSize: "12px", fontWeight: 500 }}>Unallocated</span>
+            <span style={{ color: colors.accent, fontWeight: 500 }}>{fmt(calc.unallocated)}</span>
+          </div>
         </div>
       </div>
       <div style={s.card}>
-        <div style={s.flex}><div style={s.h2}>Surplus Allocation (Phase {data.settings.currentPhase})</div><button style={s.btn} onClick={() => addItem("surplusAllocation", { name: "New", amount: 0, currency: "EUR", phase: data.settings.currentPhase })}>+ Add</button></div>
+        <div style={s.flex}><H2>Surplus Allocation (Phase {data.settings.currentPhase})</H2><button style={s.btn} onClick={() => addItem("surplusAllocation", { name: "New", amount: 0, currency: "EUR", phase: data.settings.currentPhase })}>+ Add</button></div>
         <table style={s.table}><thead><tr><th style={s.th}>Allocation</th><th style={s.th}>Amount</th><th style={s.th}>Curr</th><th style={s.th}>Phase</th><th style={s.th}>EUR/mo</th><th style={s.th}></th></tr></thead>
         <tbody>{data.surplusAllocation.map(a => <tr key={a.id} style={{ opacity: a.phase === data.settings.currentPhase ? 1 : 0.4 }}><td style={s.td}><ECell value={a.name} onChange={v => updateItem("surplusAllocation", a.id, "name", v)} /></td><td style={s.td}><ECell value={a.amount} type="number" onChange={v => updateItem("surplusAllocation", a.id, "amount", v)} /></td><td style={s.td}><CurrSelect value={a.currency} onChange={v => updateItem("surplusAllocation", a.id, "currency", v)} /></td><td style={s.td}><select style={s.select} value={a.phase} onChange={e => updateItem("surplusAllocation", a.id, "phase", parseInt(e.target.value))}>{data.phases.map(p => <option key={p.id} value={p.id}>{p.id}</option>)}</select></td><td style={s.td}>{fmt(toEur(a.amount, a.currency, rate))}</td><td style={s.td}><button style={s.btnDanger} onClick={() => removeItem("surplusAllocation", a.id)}>×</button></td></tr>)}</tbody></table>
-        <div style={{ marginTop: "12px", padding: "10px", borderRadius: "8px", background: calc.unallocated >= 0 ? colors.greenBg : colors.redBg }}>
-          <div style={s.flex}><span style={{ fontSize: "12px", fontWeight: 600 }}>Allocated: {fmt(calc.totalAllocEur)}/mo</span><span style={{ fontSize: "12px", fontWeight: 600, color: calc.unallocated >= 0 ? colors.green : colors.red }}>Unallocated: {fmt(calc.unallocated)}/mo</span></div>
+        <div style={{ marginTop: "12px", padding: "10px 14px", background: calc.unallocated >= 0 ? `${colors.green}10` : `${colors.red}10`, border: `1px solid ${calc.unallocated >= 0 ? colors.green : colors.red}40` }}>
+          <div style={s.flex}>
+            <span style={{ fontSize: "10px", color: colors.textDim, textTransform: "uppercase", letterSpacing: "0.1em", fontFamily: "'IBM Plex Mono', monospace" }}>Allocated: <span style={{ color: colors.text }}>{fmt(calc.totalAllocEur)}/mo</span></span>
+            <span style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.1em", fontFamily: "'IBM Plex Mono', monospace", color: colors.textDim }}>Unallocated: <span style={{ color: calc.unallocated >= 0 ? colors.green : colors.red }}>{fmt(calc.unallocated)}/mo</span></span>
+          </div>
         </div>
       </div>
     </div>
@@ -1299,7 +1393,7 @@ export default function App() {
   // ─── LIABILITIES ───
   const renderLiabilities = () => (
     <div style={s.card}>
-      <div style={s.flex}><div style={s.h2}>Liabilities</div><button style={s.btn} onClick={() => addItem("liabilities", { name: "New Loan", totalAmount: 0, interestRate: 0, monthlyEMI: 0, startDate: "", tenureMonths: 0, currency: "EUR", specialPayments: [] })}>+ Add</button></div>
+      <div style={s.flex}><H2>Liabilities</H2><button style={s.btn} onClick={() => addItem("liabilities", { name: "New Loan", totalAmount: 0, interestRate: 0, monthlyEMI: 0, startDate: "", tenureMonths: 0, currency: "EUR", specialPayments: [] })}>+ Add</button></div>
       {data.liabilities.length === 0 ? <div style={{ fontSize: "12px", color: colors.textDim, padding: "12px 0" }}>No liabilities</div> :
       <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
         {data.liabilities.map(l => {
@@ -1334,33 +1428,38 @@ export default function App() {
                 {l.manualEMI > 0 && <div><div style={{ fontSize: "10px", color: colors.textDim }}>&nbsp;</div><button style={{ ...s.btnDanger, fontSize: "9px" }} onClick={() => updateItem("liabilities", l.id, "manualEMI", 0)}>Reset to auto EMI</button></div>}
               </div>
               {l.totalAmount > 0 && l.tenureMonths > 0 && (l.interestRate > 0 || l.manualEMI > 0) && (
-                <div style={{ marginTop: "14px", padding: "12px", borderRadius: "8px", background: colors.card, border: `1px solid ${colors.border}` }}>
-                  <div style={{ fontSize: "11px", fontWeight: 600, color: colors.textDim, marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.5px" }}>Amortization</div>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "10px" }}>
-                    <div><div style={{ fontSize: "10px", color: colors.textDim }}>Remaining Principal</div><div style={{ fontSize: "15px", fontWeight: 700, color: colors.red }}>{fmt(amort.remainingPrincipal, l.currency)}</div></div>
-                    <div><div style={{ fontSize: "10px", color: colors.textDim }}>Remaining Interest</div><div style={{ fontSize: "15px", fontWeight: 700, color: colors.yellow }}>{fmt(amort.remainingInterest, l.currency)}</div></div>
-                    <div><div style={{ fontSize: "10px", color: colors.textDim }}>Total Interest</div><div style={{ fontSize: "15px", fontWeight: 700, color: colors.textDim }}>{fmt(amort.totalInterest, l.currency)}</div></div>
-                    <div><div style={{ fontSize: "10px", color: colors.textDim }}>Months Left</div><div style={{ fontSize: "15px", fontWeight: 700 }}>{remaining}</div></div>
-                    {(l.balloonAmount || 0) > 0 && <div><div style={{ fontSize: "10px", color: colors.textDim }}>Balloon (Schlussrate)</div><div style={{ fontSize: "15px", fontWeight: 700, color: "#f59e0b" }}>{fmt(l.balloonAmount, l.currency)}</div></div>}
+                <div style={{ marginTop: "14px", padding: "14px", background: colors.card, border: `1px solid ${colors.border}` }}>
+                  <div style={{ fontSize: "9px", fontWeight: 400, color: colors.textDim, marginBottom: "10px", textTransform: "uppercase", letterSpacing: "0.14em", fontFamily: "'IBM Plex Mono', monospace" }}><span style={{ color: colors.accent, marginRight: "6px" }}>&gt;</span>Amortization <span style={{ float: "right", color: colors.textDim }}>{l.interestRate}% APR</span></div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "10px", marginBottom: "14px" }}>
+                    <div><div style={{ fontSize: "9px", color: colors.textDim, textTransform: "uppercase", letterSpacing: "0.14em" }}>Principal</div><div style={{ fontSize: "14px", fontWeight: 500, marginTop: "4px", fontFamily: "'IBM Plex Mono', monospace" }}>{fmt(l.totalAmount, l.currency)}</div></div>
+                    <div><div style={{ fontSize: "9px", color: colors.textDim, textTransform: "uppercase", letterSpacing: "0.14em" }}>Remaining</div><div style={{ fontSize: "14px", fontWeight: 500, marginTop: "4px", color: colors.red, fontFamily: "'IBM Plex Mono', monospace" }}>{fmt(amort.remainingPrincipal, l.currency)}</div></div>
+                    <div><div style={{ fontSize: "9px", color: colors.textDim, textTransform: "uppercase", letterSpacing: "0.14em" }}>EMI</div><div style={{ fontSize: "14px", fontWeight: 500, marginTop: "4px", fontFamily: "'IBM Plex Mono', monospace" }}>{amort.emi ? fmt(amort.emi, l.currency) : "—"}<span style={{ fontSize: "10px", color: colors.textDim }}>/mo</span></div></div>
+                    <div><div style={{ fontSize: "9px", color: colors.textDim, textTransform: "uppercase", letterSpacing: "0.14em" }}>Months</div><div style={{ fontSize: "14px", fontWeight: 500, marginTop: "4px", fontFamily: "'IBM Plex Mono', monospace" }}>{elapsed} / {l.tenureMonths}</div></div>
                   </div>
                   {/* Principal paid back bar */}
                   {(() => {
                     const principalPaid = l.totalAmount - amort.remainingPrincipal;
                     const paidPct = l.totalAmount > 0 ? (principalPaid / l.totalAmount) * 100 : 0;
-                    return <div style={{ marginTop: "12px" }}>
-                      <div style={s.flex}>
-                        <span style={{ fontSize: "10px", color: colors.green }}>Paid: {fmt(principalPaid, l.currency)} ({paidPct.toFixed(1)}%)</span>
-                        <span style={{ fontSize: "10px", color: colors.red }}>Remaining: {fmt(amort.remainingPrincipal, l.currency)}</span>
+                    return <>
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
+                        <span style={{ fontSize: "10px", color: colors.green, fontFamily: "'IBM Plex Mono', monospace", letterSpacing: "0.1em", textTransform: "uppercase" }}>Paid {paidPct.toFixed(1)}%</span>
+                        <span style={{ fontSize: "10px", color: colors.red, fontFamily: "'IBM Plex Mono', monospace", letterSpacing: "0.1em", textTransform: "uppercase" }}>Remaining {(100 - paidPct).toFixed(1)}%</span>
                       </div>
-                      <div style={{ ...s.progressBar, marginTop: "4px", height: "12px" }}>
-                        <div style={{ height: "100%", borderRadius: "4px", background: colors.green, width: `${paidPct}%`, transition: "width 0.5s" }} />
+                      <div style={{ height: "6px", background: colors.cardAlt, overflow: "hidden" }}>
+                        <div style={{ height: "100%", background: colors.green, width: `${paidPct}%`, transition: "width 0.5s" }} />
                       </div>
-                      <div style={{ ...s.flex, marginTop: "6px" }}>
-                        <span style={{ fontSize: "10px", color: colors.textDim }}>{elapsed} months done</span>
-                        <span style={{ fontSize: "10px", color: colors.textDim }}>{remaining} months left</span>
-                      </div>
-                    </div>;
+                    </>;
                   })()}
+                  {/* Interest breakdown */}
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "10px", marginTop: "14px", paddingTop: "12px", borderTop: `1px solid ${colors.border}` }}>
+                    <div><div style={{ fontSize: "9px", color: colors.textDim, textTransform: "uppercase", letterSpacing: "0.14em" }}>Interest Paid</div><div style={{ fontSize: "13px", fontWeight: 500, marginTop: "4px", color: colors.green, fontFamily: "'IBM Plex Mono', monospace" }}>{fmt(amort.totalInterest - amort.remainingInterest, l.currency)}</div></div>
+                    <div><div style={{ fontSize: "9px", color: colors.textDim, textTransform: "uppercase", letterSpacing: "0.14em" }}>Total Interest</div><div style={{ fontSize: "13px", fontWeight: 500, marginTop: "4px", color: colors.textDim, fontFamily: "'IBM Plex Mono', monospace" }}>{fmt(amort.totalInterest, l.currency)}</div></div>
+                    <div><div style={{ fontSize: "9px", color: colors.textDim, textTransform: "uppercase", letterSpacing: "0.14em" }}>Interest Remaining</div><div style={{ fontSize: "13px", fontWeight: 500, marginTop: "4px", color: colors.red, fontFamily: "'IBM Plex Mono', monospace" }}>{fmt(amort.remainingInterest, l.currency)}</div></div>
+                  </div>
+                  {(l.balloonAmount || 0) > 0 && <div style={{ marginTop: "10px", padding: "8px 12px", background: `${colors.accent}10`, border: `1px solid ${colors.accent}30` }}>
+                    <span style={{ fontSize: "9px", color: colors.accent, textTransform: "uppercase", letterSpacing: "0.14em" }}>Balloon (Schlussrate) </span>
+                    <span style={{ fontSize: "12px", color: colors.accent, fontFamily: "'IBM Plex Mono', monospace", fontWeight: 500 }}>{fmt(l.balloonAmount, l.currency)}</span>
+                  </div>}
                 </div>
               )}
               {/* Special Payments */}
@@ -1412,7 +1511,7 @@ export default function App() {
     const snaps = data.snapshots;
     return (
       <div style={s.card}>
-        <div style={s.flex}><div style={s.h2}>Net Worth Over Time</div><button style={s.btn} onClick={takeSnapshot}>📸 Save Snapshot</button></div>
+        <div style={s.flex}><H2>Net Worth Over Time</H2><button style={s.btn} onClick={takeSnapshot}>📸 Save Snapshot</button></div>
         {snaps.length === 0 ? <div style={{ padding: "40px 0", textAlign: "center", color: colors.textDim, fontSize: "13px" }}>No snapshots yet.</div> : <>
           <PortfolioChart
             history={snaps.map(s => ({ date: s.date, value: s.netWorth }))}
