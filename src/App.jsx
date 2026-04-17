@@ -70,6 +70,7 @@ const defaultData = {
   ],
   snapshots: [],
   priceHistory: [],
+  goals: [],
 };
 
 // ── Storage helpers (localStorage) ──
@@ -199,6 +200,25 @@ const CurrSelect = ({ value, onChange }) => (
   </select>
 );
 
+const EXPENSE_CATEGORIES = ["Housing", "Transportation", "Utilities", "Living", "Subscriptions", "Insurance", "Loans", "Other"];
+const CATEGORY_COLORS = {
+  Housing: "#3b82f6", Transportation: "#f59e0b", Utilities: "#22c997",
+  Living: "#8b5cf6", Subscriptions: "#ec4899", Insurance: "#ef4444",
+  Loans: "#6366f1", Other: "#8b90a5"
+};
+
+const autoCategorize = (name) => {
+  const n = name.toLowerCase();
+  if (/parking|car.*loan|car.*emi|car charging|car insur|charging|tesla premium/.test(n)) return "Transportation";
+  if (/rent(?!.*parking)/.test(n)) return "Housing";
+  if (/loan|emi/.test(n)) return "Loans";
+  if (/electric|internet|mobile/.test(n)) return "Utilities";
+  if (/groc|eating|entertain|upasana/.test(n)) return "Living";
+  if (/sub|apple|netflix|discord|viki|iqiyi|nitish|ard|claude/.test(n)) return "Subscriptions";
+  if (/insur/.test(n)) return "Insurance";
+  return "Other";
+};
+
 export default function App() {
   const [data, setData] = useState(null);
   const [tab, setTab] = useState("overview");
@@ -235,6 +255,18 @@ export default function App() {
           return f;
         });
         if (mfMigrated) storage.set(STORE_KEY, merged);
+      }
+      // Migrate: auto-categorize expenses
+      if (merged.fixedExpenses) {
+        let expMigrated = false;
+        merged.fixedExpenses = merged.fixedExpenses.map(e => {
+          if (!e.category) {
+            expMigrated = true;
+            return { ...e, category: autoCategorize(e.name) };
+          }
+          return e;
+        });
+        if (expMigrated) storage.set(STORE_KEY, merged);
       }
       setData(merged);
     } else {
@@ -428,6 +460,8 @@ export default function App() {
   const [refreshing, setRefreshing] = useState(false);
   const [refreshMsg, setRefreshMsg] = useState("");
   const [showPriceSetup, setShowPriceSetup] = useState(false);
+  const [showDailyMovers, setShowDailyMovers] = useState(false);
+  const [showSettingsMenu, setShowSettingsMenu] = useState(false);
 
   const refreshPrices = useCallback(async () => {
     if (!data || refreshing) return;
@@ -632,7 +666,7 @@ export default function App() {
             <div style={s.h3}>Exchange Rate</div>
             <div style={s.flexG}>
               <span style={{ fontSize: "12px", color: colors.textDim }}>1 EUR =</span>
-              <ECell value={data.settings.eurToInr} type="number" onChange={v => update("settings", { ...data.settings, eurToInr: v })} />
+              <span style={{ fontSize: "14px", fontWeight: 600 }}>{data.settings.eurToInr?.toFixed(2) || "—"}</span>
               <span style={{ fontSize: "12px", color: colors.textDim }}>INR</span>
               <button style={{ ...s.btnOutline, padding: "3px 8px", fontSize: "9px" }} onClick={async () => {
                 const rates = await fetchExchangeRates();
@@ -640,6 +674,16 @@ export default function App() {
               }}>↻ Live</button>
             </div>
           </div>
+        </div>
+      </div>
+      {/* Monthly Summary */}
+      <div style={s.card}>
+        <div style={s.h3}>This Month</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "12px", marginTop: "10px" }}>
+          <div><div style={{ fontSize: "10px", color: colors.textDim, textTransform: "uppercase" }}>Income</div><div style={{ fontSize: "18px", fontWeight: 700, color: colors.green, marginTop: "4px" }}>{fmt(calc.totalIncomeEur)}</div></div>
+          <div><div style={{ fontSize: "10px", color: colors.textDim, textTransform: "uppercase" }}>Expenses</div><div style={{ fontSize: "18px", fontWeight: 700, color: colors.red, marginTop: "4px" }}>{fmt(calc.totalFixedEur)}</div></div>
+          <div><div style={{ fontSize: "10px", color: colors.textDim, textTransform: "uppercase" }}>SIPs</div><div style={{ fontSize: "18px", fontWeight: 700, color: colors.yellow, marginTop: "4px" }}>{fmt(calc.totalSipsEur)}</div></div>
+          <div><div style={{ fontSize: "10px", color: colors.textDim, textTransform: "uppercase" }}>Surplus ({calc.totalIncomeEur > 0 ? ((calc.surplus / calc.totalIncomeEur) * 100).toFixed(0) : 0}%)</div><div style={{ fontSize: "18px", fontWeight: 700, color: colors.accent, marginTop: "4px" }}>{fmt(calc.surplus)}</div></div>
         </div>
       </div>
       {(data.priceHistory || []).length >= 2 && <div style={s.card}>
@@ -702,8 +746,11 @@ export default function App() {
 
         return (
           <div style={s.card}>
-            <div style={s.flex}>
-              <div style={s.h2}>Daily Movers</div>
+            <div style={{ ...s.flex, cursor: "pointer" }} onClick={() => setShowDailyMovers(!showDailyMovers)}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <span style={{ fontSize: "12px", color: colors.textDim, width: "16px", transition: "transform 0.2s", transform: showDailyMovers ? "rotate(90deg)" : "rotate(0deg)" }}>▶</span>
+                <div style={s.h2}>Daily Movers</div>
+              </div>
               <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                 <span style={{ fontSize: "11px", color: colors.textDim }}>Portfolio Today:</span>
                 <span style={{ fontSize: "16px", fontWeight: 700, color: totalDayChange >= 0 ? colors.green : colors.red }}>
@@ -711,6 +758,7 @@ export default function App() {
                 </span>
               </div>
             </div>
+            {showDailyMovers && <>
 
             {cryptoMovers.length > 0 && <>
               <div style={{ fontSize: "11px", fontWeight: 700, color: "#f59e0b", textTransform: "uppercase", letterSpacing: "0.5px", marginTop: "14px", marginBottom: "8px" }}>Crypto</div>
@@ -739,6 +787,7 @@ export default function App() {
                 </div>
               </div>
             </>}
+          </>}
           </div>
         );
       })()}
@@ -807,7 +856,12 @@ export default function App() {
                     {p.status !== "active" && <button style={s.btnDanger} onClick={() => { if (confirm(`Delete Phase ${p.id}?`)) removePhase(p.id); }}>×</button>}
                   </div>
                 </div>
-                {p.target > 0 && <div style={{ marginTop: "8px" }}><div style={s.progressBar}><div style={s.progressFill(prog)} /></div><div style={{ fontSize: "10px", color: colors.textDim, marginTop: "4px" }}>{prog.toFixed(1)}%</div></div>}
+                {p.target > 0 && <div style={{ marginTop: "8px" }}><div style={s.progressBar}><div style={s.progressFill(prog)} /></div><div style={{ fontSize: "10px", color: colors.textDim, marginTop: "4px", display: "flex", justifyContent: "space-between" }}><span>{prog.toFixed(1)}%</span>{p.targetDate && <span>Target: {new Date(p.targetDate).toLocaleDateString("en-GB", { month: "short", year: "numeric" })}</span>}</div></div>}
+                {/* Target Date */}
+                <div style={{ marginTop: "6px", fontSize: "10px", color: colors.textMuted, display: "flex", alignItems: "center", gap: "6px" }}>
+                  <span>Target date:</span>
+                  <input type="date" style={{ ...s.input, padding: "2px 6px", fontSize: "10px", width: "130px" }} value={p.targetDate || ""} onChange={e => updatePhase(p.id, "targetDate", e.target.value)} />
+                </div>
                 {/* Milestones */}
                 <div style={{ marginTop: "8px", display: "flex", gap: "6px", flexWrap: "wrap", alignItems: "center" }}>
                   {(p.milestones || []).map((m, i) => (
@@ -827,23 +881,51 @@ export default function App() {
         </div>
       </div>
 
+      {/* Goals Timeline */}
       <div style={s.card}>
-        <div style={s.h2}>Monthly Flow</div>
-        <div style={s.grid3}>
-          <div><div style={{ fontSize: "10px", color: colors.textDim, marginBottom: "4px" }}>Total Income</div><div style={{ fontSize: "18px", fontWeight: 700, color: colors.green }}>{fmt(calc.totalIncomeEur)}</div></div>
-          <div><div style={{ fontSize: "10px", color: colors.textDim, marginBottom: "4px" }}>Expenses + SIPs</div><div style={{ fontSize: "18px", fontWeight: 700, color: colors.red }}>{fmt(calc.totalFixedEur + calc.totalSipsEur)}</div></div>
-          <div><div style={{ fontSize: "10px", color: colors.textDim, marginBottom: "4px" }}>Available Surplus</div><div style={{ fontSize: "18px", fontWeight: 700, color: colors.accent }}>{fmt(calc.surplus)}</div><div style={{ fontSize: "10px", color: colors.textDim }}>Allocated: {fmt(calc.totalAllocEur)} · Free: {fmt(calc.unallocated)}</div></div>
+        <div style={s.flex}>
+          <div style={s.h2}>Goals Timeline</div>
+          <button style={s.btn} onClick={() => update("goals", [...(data.goals || []), { id: uid(), name: "New Goal", targetDate: "", notes: "" }])}>+ Add Goal</button>
         </div>
+        {(!data.goals || data.goals.length === 0) ? <div style={{ fontSize: "12px", color: colors.textDim, padding: "12px 0" }}>No goals yet. Add key dates like India move, kid planned, loan payoff.</div> :
+        <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "10px" }}>
+          {(data.goals || []).slice().sort((a, b) => (a.targetDate || "9999").localeCompare(b.targetDate || "9999")).map(g => {
+            const targetMs = g.targetDate ? new Date(g.targetDate).getTime() : 0;
+            const daysAway = targetMs > 0 ? Math.ceil((targetMs - Date.now()) / 86400000) : null;
+            const isPast = daysAway !== null && daysAway < 0;
+            return (
+              <div key={g.id} style={{ display: "flex", alignItems: "center", gap: "12px", padding: "10px 12px", borderRadius: "6px", background: colors.cardAlt, border: `1px solid ${colors.border}`, opacity: isPast ? 0.6 : 1 }}>
+                <div style={{ flex: 1 }}>
+                  <ECell value={g.name} onChange={v => update("goals", data.goals.map(x => x.id === g.id ? { ...x, name: v } : x))} style={{ fontSize: "13px", fontWeight: 600 }} />
+                  {g.notes && <div style={{ fontSize: "10px", color: colors.textDim, marginTop: "2px" }}><ECell value={g.notes} onChange={v => update("goals", data.goals.map(x => x.id === g.id ? { ...x, notes: v } : x))} multiline style={{ fontSize: "10px", color: colors.textDim }} /></div>}
+                </div>
+                <input type="date" style={{ ...s.input, padding: "4px 8px", fontSize: "11px", width: "130px" }} value={g.targetDate || ""} onChange={e => update("goals", data.goals.map(x => x.id === g.id ? { ...x, targetDate: e.target.value } : x))} />
+                {daysAway !== null && <span style={{ fontSize: "10px", color: isPast ? colors.textMuted : daysAway < 90 ? colors.yellow : colors.textDim, minWidth: "70px", textAlign: "right" }}>
+                  {isPast ? "Past" : daysAway < 30 ? `${daysAway}d` : daysAway < 365 ? `${Math.round(daysAway / 30)}mo` : `${(daysAway / 365).toFixed(1)}y`}
+                </span>}
+                {!g.notes && <button style={{ ...s.btnOutline, padding: "2px 6px", fontSize: "9px" }} onClick={() => update("goals", data.goals.map(x => x.id === g.id ? { ...x, notes: "Add note..." } : x))}>+ note</button>}
+                <button style={s.btnDanger} onClick={() => update("goals", data.goals.filter(x => x.id !== g.id))}>×</button>
+              </div>
+            );
+          })}
+        </div>}
       </div>
-      <div style={{ ...s.flexG, justifyContent: "flex-end" }}>
+
+      <div style={{ ...s.flexG, justifyContent: "flex-end", position: "relative" }}>
         <button style={{ ...s.btn, background: "#6366f1" }} onClick={refreshPrices} disabled={refreshing}>
           {refreshing ? "⏳ Refreshing..." : "🔄 Refresh Prices"}
         </button>
-        <button style={s.btnOutline} onClick={() => setShowPriceSetup(!showPriceSetup)}>⚙ Price Feed Setup</button>
-        <button style={s.btnOutline} onClick={importData}>📂 Import</button>
-        <button style={s.btnOutline} onClick={exportData}>💾 Export</button>
         <button style={s.btn} onClick={takeSnapshot}>📸 Save Snapshot</button>
-        <button style={s.btnDanger} onClick={() => { if (confirm("Reset all data?")) save(defaultData); }}>Reset All</button>
+        <div style={{ position: "relative" }}>
+          <button style={s.btnOutline} onClick={() => setShowSettingsMenu(!showSettingsMenu)}>⚙ Settings ▾</button>
+          {showSettingsMenu && <div style={{ position: "absolute", top: "100%", right: 0, marginTop: "4px", background: colors.card, border: `1px solid ${colors.border}`, borderRadius: "6px", padding: "4px", zIndex: 10, display: "flex", flexDirection: "column", gap: "2px", minWidth: "180px", boxShadow: "0 4px 12px rgba(0,0,0,0.3)" }}>
+            <button style={{ ...s.btnOutline, textAlign: "left", borderColor: "transparent" }} onClick={() => { setShowPriceSetup(!showPriceSetup); setShowSettingsMenu(false); }}>⚙ Price Feed Setup</button>
+            <button style={{ ...s.btnOutline, textAlign: "left", borderColor: "transparent" }} onClick={() => { exportData(); setShowSettingsMenu(false); }}>💾 Export Data</button>
+            <button style={{ ...s.btnOutline, textAlign: "left", borderColor: "transparent" }} onClick={() => { importData(); setShowSettingsMenu(false); }}>📂 Import Data</button>
+            <div style={{ borderTop: `1px solid ${colors.border}`, margin: "4px 0" }} />
+            <button style={{ ...s.btnDanger, textAlign: "left", background: "transparent", border: "none" }} onClick={() => { if (confirm("Reset all data?")) save(defaultData); setShowSettingsMenu(false); }}>Reset All Data</button>
+          </div>}
+        </div>
       </div>
       {refreshMsg && <div style={{ padding: "8px 14px", borderRadius: "6px", background: `${colors.accent}15`, border: `1px solid ${colors.accent}30`, fontSize: "11px", color: colors.accent }}>{refreshMsg}</div>}
 
@@ -937,9 +1019,24 @@ export default function App() {
         <div style={{ marginTop: "8px", fontSize: "13px", fontWeight: 600, textAlign: "right" }}>Total: {fmtBoth(calc.totalIncomeEur, rate)}/mo</div>
       </div>
       <div style={s.card}>
-        <div style={s.flex}><div style={s.h2}>Fixed Expenses</div><button style={s.btn} onClick={() => addItem("fixedExpenses", { name: "New", amount: 0, currency: "EUR", frequency: "monthly" })}>+ Add</button></div>
-        <table style={s.table}><thead><tr><th style={s.th}>Item</th><th style={s.th}>Amount</th><th style={s.th}>Curr</th><th style={s.th}>Freq</th><th style={s.th}>EUR/mo</th><th style={s.th}></th></tr></thead>
-        <tbody>{data.fixedExpenses.map(e => <tr key={e.id}><td style={s.td}><ECell value={e.name} onChange={v => updateItem("fixedExpenses", e.id, "name", v)} /></td><td style={s.td}><ECell value={e.amount} type="number" onChange={v => updateItem("fixedExpenses", e.id, "amount", v)} /></td><td style={s.td}><CurrSelect value={e.currency} onChange={v => updateItem("fixedExpenses", e.id, "currency", v)} /></td><td style={s.td}><select style={s.select} value={e.frequency} onChange={ev => updateItem("fixedExpenses", e.id, "frequency", ev.target.value)}><option value="monthly">Monthly</option><option value="annual">Annual</option></select></td><td style={s.td}>{fmt(toEur(e.frequency === "annual" ? e.amount / 12 : e.amount, e.currency, rate))}</td><td style={s.td}><button style={s.btnDanger} onClick={() => removeItem("fixedExpenses", e.id)}>×</button></td></tr>)}</tbody></table>
+        <div style={s.flex}><div style={s.h2}>Fixed Expenses</div><button style={s.btn} onClick={() => addItem("fixedExpenses", { name: "New", amount: 0, currency: "EUR", frequency: "monthly", category: "Other" })}>+ Add</button></div>
+        {(() => {
+          const byCategory = {};
+          data.fixedExpenses.forEach(e => {
+            const cat = e.category || autoCategorize(e.name);
+            const eurMo = toEur(e.frequency === "annual" ? e.amount / 12 : e.amount, e.currency, rate, data.settings.eurToUsd || 1.08);
+            byCategory[cat] = (byCategory[cat] || 0) + eurMo;
+          });
+          const segments = EXPENSE_CATEGORIES
+            .filter(c => byCategory[c] > 0)
+            .map(c => ({ label: c, value: byCategory[c], color: CATEGORY_COLORS[c] }));
+          if (segments.length === 0) return null;
+          return <div style={{ marginBottom: "16px", padding: "12px", background: colors.bg, borderRadius: "8px" }}>
+            <DonutChart title="By Category" segments={segments} currency="EUR" size={140} />
+          </div>;
+        })()}
+        <table style={s.table}><thead><tr><th style={s.th}>Item</th><th style={s.th}>Category</th><th style={s.th}>Amount</th><th style={s.th}>Curr</th><th style={s.th}>Freq</th><th style={s.th}>EUR/mo</th><th style={s.th}></th></tr></thead>
+        <tbody>{data.fixedExpenses.map(e => <tr key={e.id}><td style={s.td}><ECell value={e.name} onChange={v => updateItem("fixedExpenses", e.id, "name", v)} /></td><td style={s.td}><select style={s.select} value={e.category || autoCategorize(e.name)} onChange={ev => updateItem("fixedExpenses", e.id, "category", ev.target.value)}>{EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}</select></td><td style={s.td}><ECell value={e.amount} type="number" onChange={v => updateItem("fixedExpenses", e.id, "amount", v)} /></td><td style={s.td}><CurrSelect value={e.currency} onChange={v => updateItem("fixedExpenses", e.id, "currency", v)} /></td><td style={s.td}><select style={s.select} value={e.frequency} onChange={ev => updateItem("fixedExpenses", e.id, "frequency", ev.target.value)}><option value="monthly">Monthly</option><option value="annual">Annual</option></select></td><td style={s.td}>{fmt(toEur(e.frequency === "annual" ? e.amount / 12 : e.amount, e.currency, rate))}</td><td style={s.td}><button style={s.btnDanger} onClick={() => removeItem("fixedExpenses", e.id)}>×</button></td></tr>)}</tbody></table>
         <div style={{ marginTop: "8px", fontSize: "13px", fontWeight: 600, textAlign: "right" }}>Total: {fmtBoth(calc.totalFixedEur, rate)}/mo</div>
       </div>
       <div style={s.card}>
