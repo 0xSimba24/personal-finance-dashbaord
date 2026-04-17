@@ -462,6 +462,7 @@ export default function App() {
   const [showPriceSetup, setShowPriceSetup] = useState(false);
   const [showDailyMovers, setShowDailyMovers] = useState(false);
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
+  const [allocFilter, setAllocFilter] = useState({ liquid: true, illiquid: true });
 
   const refreshPrices = useCallback(async () => {
     if (!data || refreshing) return;
@@ -793,39 +794,66 @@ export default function App() {
       })()}
 
       <div style={s.card}>
-        <div style={s.h2}>Portfolio Allocation</div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px" }}>
-          {/* Asset allocation donut */}
-          <DonutChart
-            title="By Asset Class"
-            segments={[
-              { label: "MFs / ETFs", value: calc.mfValue.total, color: "#6366f1" },
-              { label: "Equity", value: calc.eqValue.total, color: "#8b5cf6" },
-              { label: "Cash", value: calc.cashValue.total, color: colors.green },
-              { label: "Crypto", value: calc.cryptoValue.total, color: "#f59e0b" },
-              { label: "Physical Assets", value: calc.propValue.total, color: "#3b82f6" },
-              { label: "ESOPs", value: calc.esopValue.total, color: "#ec4899" },
-            ].filter(x => x.value > 0)}
-          />
-          {/* Currency exposure donut */}
-          {(() => {
-            const currExp = { EUR: 0, INR: 0, USD: 0 };
-            data.mutualFunds.forEach(f => { const v = f.units * f.currentPrice; currExp[f.currency] = (currExp[f.currency] || 0) + v / (f.currency === "INR" ? rate : f.currency === "USD" ? (data.settings.eurToUsd || 1.08) : 1); });
-            (data.equityAccounts || []).forEach(a => a.stocks.forEach(st => { const v = st.quantity * st.currentPrice; currExp[st.currency] = (currExp[st.currency] || 0) + v / (st.currency === "INR" ? rate : st.currency === "USD" ? (data.settings.eurToUsd || 1.08) : 1); }));
-            data.cashSavings.forEach(c => { currExp[c.currency] = (currExp[c.currency] || 0) + c.amount / (c.currency === "INR" ? rate : c.currency === "USD" ? (data.settings.eurToUsd || 1.08) : 1); });
-            data.crypto.forEach(c => { const v = c.quantity * c.currentPrice; currExp["USD"] = (currExp["USD"] || 0) + v / (data.settings.eurToUsd || 1.08); });
-            (data.realEstate || []).forEach(p => { currExp[p.currency] = (currExp[p.currency] || 0) + p.value / (p.currency === "INR" ? rate : p.currency === "USD" ? (data.settings.eurToUsd || 1.08) : 1); });
-            data.esops.forEach(e => { const v = Math.max(0, (e.vestedQty + e.unvestedQty) * (e.currentPrice - e.strikePrice)); currExp[e.currency] = (currExp[e.currency] || 0) + v / (e.currency === "INR" ? rate : e.currency === "USD" ? (data.settings.eurToUsd || 1.08) : 1); });
-            return <DonutChart
-              title="By Currency"
-              segments={[
-                { label: "EUR", value: currExp.EUR || 0, color: "#3b82f6" },
-                { label: "INR", value: currExp.INR || 0, color: "#f59e0b" },
-                { label: "USD", value: currExp.USD || 0, color: "#22c997" },
-              ].filter(x => x.value > 0)}
-            />;
-          })()}
+        <div style={s.flex}>
+          <div style={s.h2}>Portfolio Allocation</div>
+          <div style={{ display: "flex", gap: "4px" }}>
+            {[{ key: "liquid", label: "Liquid" }, { key: "illiquid", label: "Illiquid" }].map(f => {
+              const active = allocFilter[f.key];
+              return <button key={f.key} onClick={() => {
+                const other = f.key === "liquid" ? "illiquid" : "liquid";
+                // Force at least one to stay on
+                if (active && !allocFilter[other]) return;
+                setAllocFilter({ ...allocFilter, [f.key]: !active });
+              }} style={{
+                padding: "4px 12px", borderRadius: "4px", border: "none", cursor: "pointer",
+                fontSize: "10px", fontWeight: 600, fontFamily: "inherit",
+                background: active ? colors.accent : colors.cardAlt,
+                color: active ? colors.bg : colors.textDim,
+              }}>{f.label}</button>;
+            })}
+          </div>
         </div>
+        {(() => {
+          const useL = allocFilter.liquid, useI = allocFilter.illiquid;
+          const pick = (v) => (useL && useI) ? v.total : useL ? v.liquid : (v.total - v.liquid);
+          return <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px", marginTop: "12px" }}>
+            {/* Asset allocation donut */}
+            <DonutChart
+              title="By Asset Class"
+              segments={[
+                { label: "MFs / ETFs", value: pick(calc.mfValue), color: "#6366f1" },
+                { label: "Equity", value: pick(calc.eqValue), color: "#8b5cf6" },
+                { label: "Cash", value: pick(calc.cashValue), color: colors.green },
+                { label: "Crypto", value: pick(calc.cryptoValue), color: "#f59e0b" },
+                { label: "Physical Assets", value: pick(calc.propValue), color: "#3b82f6" },
+                { label: "ESOPs", value: pick(calc.esopValue), color: "#ec4899" },
+              ].filter(x => x.value > 0)}
+            />
+            {/* Currency exposure donut */}
+            {(() => {
+              const currExp = { EUR: 0, INR: 0, USD: 0 };
+              const usdRate = data.settings.eurToUsd || 1.08;
+              const cvt = (amt, curr) => curr === "EUR" ? amt : curr === "INR" ? amt / rate : amt / usdRate;
+              const match = (liq) => (useL && useI) || (useL && liq) || (useI && !liq);
+
+              data.mutualFunds.forEach(f => { if (match(f.liquid)) { const v = f.units * f.currentPrice; currExp[f.currency] = (currExp[f.currency] || 0) + cvt(v, f.currency); }});
+              (data.equityAccounts || []).forEach(a => a.stocks.forEach(st => { if (match(st.liquid)) { const v = st.quantity * st.currentPrice; currExp[st.currency] = (currExp[st.currency] || 0) + cvt(v, st.currency); }}));
+              data.cashSavings.forEach(c => { if (match(c.liquid)) currExp[c.currency] = (currExp[c.currency] || 0) + cvt(c.amount, c.currency); });
+              data.crypto.forEach(c => { if (match(c.liquid)) { const v = c.quantity * c.currentPrice; currExp["USD"] = (currExp["USD"] || 0) + v / usdRate; }});
+              (data.realEstate || []).forEach(p => { if (match(p.liquid)) currExp[p.currency] = (currExp[p.currency] || 0) + cvt(p.value, p.currency); });
+              data.esops.forEach(e => { if (match(e.liquid)) { const v = Math.max(0, (e.vestedQty + e.unvestedQty) * (e.currentPrice - e.strikePrice)); currExp[e.currency] = (currExp[e.currency] || 0) + cvt(v, e.currency); }});
+
+              return <DonutChart
+                title="By Currency"
+                segments={[
+                  { label: "EUR", value: currExp.EUR || 0, color: "#3b82f6" },
+                  { label: "INR", value: currExp.INR || 0, color: "#f59e0b" },
+                  { label: "USD", value: currExp.USD || 0, color: "#22c997" },
+                ].filter(x => x.value > 0)}
+              />;
+            })()}
+          </div>;
+        })()}
       </div>
 
       {/* Phase Progress */}
