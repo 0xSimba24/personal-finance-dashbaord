@@ -1434,56 +1434,163 @@ export default function App() {
   };
 
   // ─── SIPs & ALLOCATION ───
-  const renderInvest = () => (
-    <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-      <div style={s.card}>
-        <div style={s.flex}><H2>Monthly SIPs</H2><button style={s.btn} onClick={() => addItem("sips", { name: "New SIP", amount: 0, currency: "INR" })}>+ Add</button></div>
-        <table style={s.table}><thead><tr><th style={s.th}>Investment</th><th style={s.th}>Amount</th><th style={s.th}>Curr</th><th style={s.th}>EUR/mo</th><th style={s.th}></th></tr></thead>
-        <tbody>{data.sips.map(i => <tr key={i.id}><td style={s.td}><ECell value={i.name} onChange={v => updateItem("sips", i.id, "name", v)} /></td><td style={s.td}><ECell value={i.amount} type="number" onChange={v => updateItem("sips", i.id, "amount", v)} /></td><td style={s.td}><CurrSelect value={i.currency} onChange={v => updateItem("sips", i.id, "currency", v)} /></td><td style={s.td}>{fmt(toEur(i.amount, i.currency, rate))}</td><td style={s.td}><button style={s.btnDanger} onClick={() => removeItem("sips", i.id)}>×</button></td></tr>)}</tbody></table>
-        <div style={{ marginTop: "8px", fontSize: "13px", fontWeight: 600, textAlign: "right" }}>Total: {fmtBoth(calc.totalSipsEur, rate)}/mo</div>
-      </div>
-      <div style={s.card}>
-        <H2>Unallocated · After Expenses + SIPs</H2>
-        <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "13px", lineHeight: 2, marginTop: "8px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between" }}>
-            <span style={{ color: colors.textDim, textTransform: "uppercase", letterSpacing: "0.1em", fontSize: "11px" }}>Income</span>
-            <span style={{ color: colors.green }}>{fmt(calc.totalIncomeEur)}</span>
+  const renderInvest = () => {
+    // Group allocations by phase
+    const groupedAlloc = {};
+    data.surplusAllocation.forEach(a => {
+      (groupedAlloc[a.phase] = groupedAlloc[a.phase] || []).push(a);
+    });
+
+    // SIPs by currency
+    const sipsByCcy = {};
+    data.sips.forEach(sip => {
+      const eurMo = toEur(sip.amount, sip.currency, rate);
+      sipsByCcy[sip.currency] = (sipsByCcy[sip.currency] || 0) + eurMo;
+    });
+    const currList = ["INR", "EUR", "USD"].filter(c => sipsByCcy[c] > 0);
+
+    return (
+    <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 380px", gap: "14px" }} className="overview-grid">
+      {/* LEFT COLUMN */}
+      <div style={{ display: "flex", flexDirection: "column", gap: "14px", minWidth: 0 }}>
+        {/* SIPs · Monthly */}
+        <div style={s.card}>
+          <div style={s.flex}>
+            <H2>SIPs · Monthly</H2>
+            <span style={{ fontSize: "10px", color: colors.textDim, letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'IBM Plex Mono', monospace" }}>
+              {data.sips.length} ACTIVE · {fmt(calc.totalSipsEur)} /MO
+            </span>
           </div>
-          <div style={{ display: "flex", justifyContent: "space-between" }}>
-            <span style={{ color: colors.textDim, textTransform: "uppercase", letterSpacing: "0.1em", fontSize: "11px" }}>− Fixed Expenses</span>
-            <span style={{ color: colors.red }}>{fmt(calc.totalFixedEur)}</span>
+          <table style={{ ...s.table, marginTop: "10px" }}>
+            <thead><tr><th style={s.th}>Fund / Deposit</th><th style={s.th}>Amount</th><th style={s.th}>Curr</th><th style={{ ...s.th, textAlign: "right" }}>EUR/mo</th><th style={{ ...s.th, textAlign: "right" }}>% of SIPs</th><th style={s.th}></th></tr></thead>
+            <tbody>{data.sips.map(sip => {
+              const eurMo = toEur(sip.amount, sip.currency, rate);
+              const sipPct = calc.totalSipsEur > 0 ? (eurMo / calc.totalSipsEur) * 100 : 0;
+              return <tr key={sip.id}>
+                <td style={{ ...s.td, color: colors.accent }}><ECell value={sip.name} onChange={v => updateItem("sips", sip.id, "name", v)} /></td>
+                <td style={s.td}><ECell value={sip.amount} type="number" onChange={v => updateItem("sips", sip.id, "amount", v)} /></td>
+                <td style={s.td}><CurrSelect value={sip.currency} onChange={v => updateItem("sips", sip.id, "currency", v)} /></td>
+                <td style={{ ...s.td, textAlign: "right" }}>{fmt(eurMo)}</td>
+                <td style={{ ...s.td, textAlign: "right", color: colors.textDim, fontSize: "11px" }}>{sipPct.toFixed(1)}%</td>
+                <td style={s.td}><button style={s.btnDanger} onClick={() => removeItem("sips", sip.id)}>×</button></td>
+              </tr>;
+            })}</tbody>
+          </table>
+          <div style={{ marginTop: "10px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <button style={s.btn} onClick={() => addItem("sips", { name: "New SIP", amount: 0, currency: "INR" })}>+ ADD SIP</button>
+            <div style={{ padding: "8px 12px", background: colors.cardAlt, fontFamily: "'IBM Plex Mono', monospace", fontSize: "10px", color: colors.textDim, letterSpacing: "0.1em", textTransform: "uppercase" }}>
+              <span style={{ color: colors.accent }}>&gt;</span> Annual · <span style={{ color: colors.text }}>{fmt(calc.totalSipsEur * 12)}</span>
+            </div>
           </div>
-          <div style={{ display: "flex", justifyContent: "space-between" }}>
-            <span style={{ color: colors.textDim, textTransform: "uppercase", letterSpacing: "0.1em", fontSize: "11px" }}>− SIPs</span>
-            <span style={{ color: colors.red }}>{fmt(calc.totalSipsEur)}</span>
+        </div>
+
+        {/* Surplus Allocation · By Phase */}
+        <div style={s.card}>
+          <div style={s.flex}>
+            <H2>Surplus Allocation · By Phase</H2>
+            <span style={{ fontSize: "10px", color: colors.textDim, letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'IBM Plex Mono', monospace" }}>
+              {fmt(calc.totalAllocEur)} /MO
+            </span>
           </div>
-          <div style={{ display: "flex", justifyContent: "space-between", borderTop: `1px solid ${colors.border}`, paddingTop: "6px", marginTop: "6px" }}>
-            <span style={{ color: colors.textDim, textTransform: "uppercase", letterSpacing: "0.1em", fontSize: "11px" }}>= Surplus</span>
-            <span>{fmt(calc.surplus)}</span>
-          </div>
-          <div style={{ display: "flex", justifyContent: "space-between" }}>
-            <span style={{ color: colors.textDim, textTransform: "uppercase", letterSpacing: "0.1em", fontSize: "11px" }}>− Allocated</span>
-            <span style={{ color: colors.red }}>{fmt(calc.totalAllocEur)}</span>
-          </div>
-          <div style={{ display: "flex", justifyContent: "space-between", borderTop: `2px solid ${colors.accent}`, paddingTop: "8px", marginTop: "8px", fontSize: "16px" }}>
-            <span style={{ color: colors.accent, textTransform: "uppercase", letterSpacing: "0.14em", fontSize: "12px", fontWeight: 500 }}>Unallocated</span>
-            <span style={{ color: colors.accent, fontWeight: 500 }}>{fmt(calc.unallocated)}</span>
+          <div style={{ marginTop: "10px" }}>
+            {data.phases.map(phase => {
+              const items = groupedAlloc[phase.id] || [];
+              const pTotal = items.reduce((s, i) => s + toEur(i.amount, i.currency, rate), 0);
+              const isCurrentPhase = phase.id === data.settings.currentPhase;
+              return (
+                <div key={phase.id} style={{ marginBottom: "14px", padding: "12px", border: `1px solid ${colors.border}`, background: colors.cardAlt, opacity: items.length === 0 && !isCurrentPhase ? 0.5 : 1 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "10px" }}>
+                    <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "10px", letterSpacing: "0.14em", textTransform: "uppercase", color: colors.accent }}>
+                      Phase {phase.id} · {phase.name}
+                    </span>
+                    <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "10px", letterSpacing: "0.1em", color: colors.textDim, textTransform: "uppercase" }}>
+                      {fmt(pTotal)} /mo
+                    </span>
+                  </div>
+                  {items.length === 0 ? <div style={{ fontSize: "10px", color: colors.textMuted, padding: "8px 0", textAlign: "center", fontFamily: "'IBM Plex Mono', monospace", letterSpacing: "0.1em", textTransform: "uppercase" }}>No allocations</div> :
+                  items.map(a => (
+                    <div key={a.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: `1px solid ${colors.gridLine}`, fontFamily: "'IBM Plex Mono', monospace", fontSize: "12px" }}>
+                      <ECell value={a.name} onChange={v => updateItem("surplusAllocation", a.id, "name", v)} />
+                      <span style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+                        <ECell value={a.amount} type="number" onChange={v => updateItem("surplusAllocation", a.id, "amount", v)} />
+                        <CurrSelect value={a.currency} onChange={v => updateItem("surplusAllocation", a.id, "currency", v)} />
+                        <span style={{ color: colors.textDim, minWidth: "60px", textAlign: "right" }}>{fmt(toEur(a.amount, a.currency, rate))}</span>
+                        <button style={s.btnDanger} onClick={() => removeItem("surplusAllocation", a.id)}>×</button>
+                      </span>
+                    </div>
+                  ))}
+                  <button style={{ ...s.btnOutline, padding: "3px 8px", fontSize: "9px", marginTop: "8px" }} onClick={() => addItem("surplusAllocation", { name: "New", amount: 0, currency: "EUR", phase: phase.id })}>+ ADD ALLOCATION</button>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
-      <div style={s.card}>
-        <div style={s.flex}><H2>Surplus Allocation (Phase {data.settings.currentPhase})</H2><button style={s.btn} onClick={() => addItem("surplusAllocation", { name: "New", amount: 0, currency: "EUR", phase: data.settings.currentPhase })}>+ Add</button></div>
-        <table style={s.table}><thead><tr><th style={s.th}>Allocation</th><th style={s.th}>Amount</th><th style={s.th}>Curr</th><th style={s.th}>Phase</th><th style={s.th}>EUR/mo</th><th style={s.th}></th></tr></thead>
-        <tbody>{data.surplusAllocation.map(a => <tr key={a.id} style={{ opacity: a.phase === data.settings.currentPhase ? 1 : 0.4 }}><td style={s.td}><ECell value={a.name} onChange={v => updateItem("surplusAllocation", a.id, "name", v)} /></td><td style={s.td}><ECell value={a.amount} type="number" onChange={v => updateItem("surplusAllocation", a.id, "amount", v)} /></td><td style={s.td}><CurrSelect value={a.currency} onChange={v => updateItem("surplusAllocation", a.id, "currency", v)} /></td><td style={s.td}><select style={s.select} value={a.phase} onChange={e => updateItem("surplusAllocation", a.id, "phase", parseInt(e.target.value))}>{data.phases.map(p => <option key={p.id} value={p.id}>{p.id}</option>)}</select></td><td style={s.td}>{fmt(toEur(a.amount, a.currency, rate))}</td><td style={s.td}><button style={s.btnDanger} onClick={() => removeItem("surplusAllocation", a.id)}>×</button></td></tr>)}</tbody></table>
-        <div style={{ marginTop: "12px", padding: "10px 14px", background: calc.unallocated >= 0 ? `${colors.green}10` : `${colors.red}10`, border: `1px solid ${calc.unallocated >= 0 ? colors.green : colors.red}40` }}>
+
+      {/* RIGHT RAIL */}
+      <div style={{ display: "flex", flexDirection: "column", gap: "14px", minWidth: 0 }}>
+        {/* SIP Breakdown by Currency */}
+        <div style={s.card}>
           <div style={s.flex}>
-            <span style={{ fontSize: "10px", color: colors.textDim, textTransform: "uppercase", letterSpacing: "0.1em", fontFamily: "'IBM Plex Mono', monospace" }}>Allocated: <span style={{ color: colors.text }}>{fmt(calc.totalAllocEur)}/mo</span></span>
-            <span style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.1em", fontFamily: "'IBM Plex Mono', monospace", color: colors.textDim }}>Unallocated: <span style={{ color: calc.unallocated >= 0 ? colors.green : colors.red }}>{fmt(calc.unallocated)}/mo</span></span>
+            <H2>SIP Breakdown</H2>
+            <span style={{ fontSize: "10px", color: colors.textDim, letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'IBM Plex Mono', monospace" }}>By Currency</span>
+          </div>
+          <div style={{ marginTop: "12px" }}>
+            {currList.length === 0 ? <div style={{ fontSize: "10px", color: colors.textMuted, padding: "16px 0", textAlign: "center", letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'IBM Plex Mono', monospace" }}>No SIPs yet</div> :
+            currList.map(ccy => {
+              const val = sipsByCcy[ccy];
+              const sipPct = calc.totalSipsEur > 0 ? (val / calc.totalSipsEur) * 100 : 0;
+              const color = ccy === "INR" ? colors.accent : ccy === "EUR" ? colors.cyan : colors.green;
+              return <div key={ccy} style={{ marginBottom: "14px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontFamily: "'IBM Plex Mono', monospace", fontSize: "11px", marginBottom: "6px" }}>
+                  <span style={{ fontWeight: 500 }}>{ccy}</span>
+                  <span style={{ color: colors.textDim }}>{fmt(val)} · {sipPct.toFixed(0)}%</span>
+                </div>
+                <div style={{ height: "6px", background: colors.cardAlt, overflow: "hidden" }}>
+                  <div style={{ height: "100%", width: `${sipPct}%`, background: color, transition: "width 0.5s" }} />
+                </div>
+              </div>;
+            })}
+          </div>
+        </div>
+
+        {/* Unallocated */}
+        <div style={s.card}>
+          <div style={s.flex}>
+            <H2>Unallocated</H2>
+            <span style={{ fontSize: "10px", color: colors.textDim, letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'IBM Plex Mono', monospace" }}>After Expenses + SIPs</span>
+          </div>
+          <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "13px", marginTop: "10px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0" }}>
+              <span style={{ color: colors.textDim, textTransform: "uppercase", letterSpacing: "0.1em", fontSize: "10px" }}>Income</span>
+              <span style={{ color: colors.green }}>{fmt(calc.totalIncomeEur)}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0" }}>
+              <span style={{ color: colors.textDim, textTransform: "uppercase", letterSpacing: "0.1em", fontSize: "10px" }}>− Fixed</span>
+              <span style={{ color: colors.red }}>{fmt(calc.totalFixedEur)}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0" }}>
+              <span style={{ color: colors.textDim, textTransform: "uppercase", letterSpacing: "0.1em", fontSize: "10px" }}>− SIPs</span>
+              <span style={{ color: colors.red }}>{fmt(calc.totalSipsEur)}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderTop: `1px solid ${colors.border}`, marginTop: "4px" }}>
+              <span style={{ color: colors.textDim, textTransform: "uppercase", letterSpacing: "0.1em", fontSize: "10px" }}>= Surplus</span>
+              <span>{fmt(calc.surplus)}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0" }}>
+              <span style={{ color: colors.textDim, textTransform: "uppercase", letterSpacing: "0.1em", fontSize: "10px" }}>− Allocated</span>
+              <span style={{ color: colors.red }}>{fmt(calc.totalAllocEur)}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 0 6px 0", borderTop: `2px solid ${colors.accent}`, marginTop: "6px", fontSize: "16px" }}>
+              <span style={{ color: colors.accent, textTransform: "uppercase", letterSpacing: "0.14em", fontSize: "11px", fontWeight: 500 }}>Unallocated</span>
+              <span style={{ color: colors.accent, fontWeight: 500 }}>{fmt(calc.unallocated)}</span>
+            </div>
           </div>
         </div>
       </div>
     </div>
-  );
+    );
+  };
 
   // ─── LIABILITIES ───
   const renderLiabilities = () => (
