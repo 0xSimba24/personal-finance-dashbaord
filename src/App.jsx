@@ -1594,117 +1594,172 @@ export default function App() {
 
   // ─── LIABILITIES ───
   const renderLiabilities = () => (
-    <div style={s.card}>
-      <div style={s.flex}><H2>Liabilities</H2><button style={s.btn} onClick={() => addItem("liabilities", { name: "New Loan", totalAmount: 0, interestRate: 0, monthlyEMI: 0, startDate: "", tenureMonths: 0, currency: "EUR", specialPayments: [] })}>+ Add</button></div>
-      {data.liabilities.length === 0 ? <div style={{ fontSize: "12px", color: colors.textDim, padding: "12px 0" }}>No liabilities</div> :
-      <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-        {data.liabilities.map(l => {
-          const elapsed = getMonthsElapsed(l.startDate);
-          const spTotal = (l.specialPayments || []).reduce((s, p) => s + (p.amount || 0), 0);
-          const amort = calcAmortization(l.totalAmount, l.interestRate, l.tenureMonths, elapsed, spTotal, l.manualEMI || 0, l.balloonAmount || 0);
-          const remaining = amort.monthsLeft != null ? amort.monthsLeft : Math.max(0, l.tenureMonths - elapsed);
-          const prog = pct(elapsed, l.tenureMonths);
-          return (
-            <div key={l.id} style={{ padding: "14px", borderRadius: "8px", background: colors.cardAlt, border: `1px solid ${colors.border}` }}>
-              <div style={s.flex}><ECell value={l.name} onChange={v => updateItem("liabilities", l.id, "name", v)} style={{ fontSize: "14px", fontWeight: 600 }} /><button style={s.btnDanger} onClick={() => removeItem("liabilities", l.id)}>×</button></div>
-              {"linkedAsset" in l ? <div style={{ fontSize: "10px", color: colors.textDim, marginTop: "2px" }}>Secured by: <select style={{ ...s.select, fontSize: "10px", color: colors.accent }} value={l.linkedAsset || ""} onChange={e => updateItem("liabilities", l.id, "linkedAsset", e.target.value)}>
-                <option value="">— Select asset —</option>
-                {(data.realEstate || []).map(a => <option key={a.id} value={a.name}>{a.name} ({fmt(a.value, a.currency)})</option>)}
-                {data.cashSavings.filter(c => c.amount > 0).map(a => <option key={a.id} value={a.name}>{a.name} ({fmt(a.amount, a.currency)})</option>)}
-                {data.mutualFunds.filter(f => f.units > 0).map(a => <option key={a.id} value={a.name}>{a.name}</option>)}
-                {(data.equityAccounts || []).map(a => <option key={a.id} value={a.name}>{a.name} ({a.stocks.length} stocks)</option>)}
-              </select></div>
-              : <div style={{ marginTop: "2px" }}><button style={{ ...s.btnOutline, padding: "2px 6px", fontSize: "8px" }} onClick={() => updateItem("liabilities", l.id, "linkedAsset", "")}>+ Link Asset</button></div>}
-              {l.notes ? <div style={{ marginTop: "4px" }}><span style={{ display: "inline-block", background: colors.cardAlt, padding: "2px 8px", borderRadius: "4px", marginLeft: "-8px" }}><ECell value={l.notes} onChange={v => updateItem("liabilities", l.id, "notes", v)} multiline style={{ fontSize: "10px", color: "#c5cae0", background: "transparent" }} /></span></div> : <div style={{ marginTop: "2px" }}><span style={{ fontSize: "8px", color: colors.border, cursor: "pointer" }} onClick={() => updateItem("liabilities", l.id, "notes", "Add note...")}>+ note</span></div>}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "10px", marginTop: "12px" }}>
-                <div><div style={{ fontSize: "10px", color: colors.textDim }}>Principal</div><ECell value={l.totalAmount} type="number" onChange={v => updateItem("liabilities", l.id, "totalAmount", v)} /></div>
-                <div><div style={{ fontSize: "10px", color: colors.textDim }}>Interest Rate (%)</div><ECell value={l.interestRate} type="number" onChange={v => updateItem("liabilities", l.id, "interestRate", v)} /></div>
-                <div><div style={{ fontSize: "10px", color: colors.textDim }}>Monthly EMI {l.manualEMI ? "" : "(auto)"}</div>
-                  {l.manualEMI ? <ECell value={l.manualEMI} type="number" onChange={v => updateItem("liabilities", l.id, "manualEMI", v)} />
-                  : <div style={{ display: "flex", alignItems: "center", gap: "6px" }}><span style={{ fontSize: "13px", fontWeight: 600 }}>{amort.emi ? fmt(amort.emi, l.currency) : "—"}</span><button style={{ ...s.btnOutline, padding: "2px 6px", fontSize: "8px" }} onClick={() => updateItem("liabilities", l.id, "manualEMI", amort.emi || 0)}>Override</button></div>}
+    <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+      <div style={s.card}>
+        <div style={s.flex}>
+          <H2>Active Liabilities</H2>
+          <span style={{ fontSize: "10px", color: colors.textDim, letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'IBM Plex Mono', monospace" }}>
+            {data.liabilities.length} LOANS · {fmt(calc.totalLiabEur)}
+          </span>
+        </div>
+        <div style={{ marginTop: "10px", marginBottom: "10px" }}>
+          <button style={s.btn} onClick={() => addItem("liabilities", { name: "New Loan", totalAmount: 0, interestRate: 0, monthlyEMI: 0, startDate: "", tenureMonths: 0, currency: "EUR", specialPayments: [] })}>+ ADD LOAN</button>
+        </div>
+        {data.liabilities.length === 0 ? <div style={{ fontSize: "10px", color: colors.textMuted, padding: "20px 0", textAlign: "center", letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'IBM Plex Mono', monospace" }}>No liabilities</div> :
+        <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+          {data.liabilities.map(l => {
+            const elapsed = getMonthsElapsed(l.startDate);
+            const spTotal = (l.specialPayments || []).reduce((s, p) => s + (p.amount || 0), 0);
+            const amort = calcAmortization(l.totalAmount, l.interestRate, l.tenureMonths, elapsed, spTotal, l.manualEMI || 0, l.balloonAmount || 0);
+            const remaining = amort.monthsLeft != null ? amort.monthsLeft : Math.max(0, l.tenureMonths - elapsed);
+            const principalPaid = l.totalAmount - amort.remainingPrincipal;
+            const paidPct = l.totalAmount > 0 ? (principalPaid / l.totalAmount) * 100 : 0;
+            const hasData = l.totalAmount > 0 && l.tenureMonths > 0 && (l.interestRate > 0 || l.manualEMI > 0);
+
+            return (
+              <div key={l.id} style={{ padding: "16px", background: colors.cardAlt, border: `1px solid ${colors.border}` }}>
+                {/* Loan Name Header */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "14px" }}>
+                  <div>
+                    <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "10px", letterSpacing: "0.14em", color: colors.textDim, textTransform: "uppercase" }}>Loan</div>
+                    <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "15px", color: colors.text, marginTop: "4px", textTransform: "uppercase", letterSpacing: "0.02em" }}>
+                      <ECell value={l.name} onChange={v => updateItem("liabilities", l.id, "name", v)} style={{ fontSize: "15px", fontWeight: 500 }} />
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                    <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "10px", padding: "3px 8px", border: `1px solid ${colors.violet}`, color: colors.violet, letterSpacing: "0.1em", textTransform: "uppercase" }}>{l.interestRate}% APR</span>
+                    <button style={s.btnDanger} onClick={() => removeItem("liabilities", l.id)}>×</button>
+                  </div>
                 </div>
-                <div><div style={{ fontSize: "10px", color: colors.textDim }}>Start Date</div><input type="date" style={{ ...s.input, width: "130px" }} value={l.startDate} onChange={e => updateItem("liabilities", l.id, "startDate", e.target.value)} /></div>
-                <div><div style={{ fontSize: "10px", color: colors.textDim }}>Tenure (months)</div><ECell value={l.tenureMonths} type="number" onChange={v => updateItem("liabilities", l.id, "tenureMonths", v)} /></div>
-                <div><div style={{ fontSize: "10px", color: colors.textDim }}>Balloon Payment</div><ECell value={l.balloonAmount || 0} type="number" onChange={v => updateItem("liabilities", l.id, "balloonAmount", v)} /></div>
-                <div><div style={{ fontSize: "10px", color: colors.textDim }}>Currency</div><CurrSelect value={l.currency} onChange={v => updateItem("liabilities", l.id, "currency", v)} /></div>
-                {l.manualEMI > 0 && <div><div style={{ fontSize: "10px", color: colors.textDim }}>&nbsp;</div><button style={{ ...s.btnDanger, fontSize: "9px" }} onClick={() => updateItem("liabilities", l.id, "manualEMI", 0)}>Reset to auto EMI</button></div>}
-              </div>
-              {l.totalAmount > 0 && l.tenureMonths > 0 && (l.interestRate > 0 || l.manualEMI > 0) && (
-                <div style={{ marginTop: "14px", padding: "14px", background: colors.card, border: `1px solid ${colors.border}` }}>
-                  <div style={{ fontSize: "9px", fontWeight: 400, color: colors.textDim, marginBottom: "10px", textTransform: "uppercase", letterSpacing: "0.14em", fontFamily: "'IBM Plex Mono', monospace" }}><span style={{ color: colors.accent, marginRight: "6px" }}>&gt;</span>Amortization <span style={{ float: "right", color: colors.textDim }}>{l.interestRate}% APR</span></div>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "10px", marginBottom: "14px" }}>
-                    <div><div style={{ fontSize: "9px", color: colors.textDim, textTransform: "uppercase", letterSpacing: "0.14em" }}>Principal</div><div style={{ fontSize: "14px", fontWeight: 500, marginTop: "4px", fontFamily: "'IBM Plex Mono', monospace" }}>{fmt(l.totalAmount, l.currency)}</div></div>
-                    <div><div style={{ fontSize: "9px", color: colors.textDim, textTransform: "uppercase", letterSpacing: "0.14em" }}>Remaining</div><div style={{ fontSize: "14px", fontWeight: 500, marginTop: "4px", color: colors.red, fontFamily: "'IBM Plex Mono', monospace" }}>{fmt(amort.remainingPrincipal, l.currency)}</div></div>
-                    <div><div style={{ fontSize: "9px", color: colors.textDim, textTransform: "uppercase", letterSpacing: "0.14em" }}>EMI</div><div style={{ fontSize: "14px", fontWeight: 500, marginTop: "4px", fontFamily: "'IBM Plex Mono', monospace" }}>{amort.emi ? fmt(amort.emi, l.currency) : "—"}<span style={{ fontSize: "10px", color: colors.textDim }}>/mo</span></div></div>
-                    <div><div style={{ fontSize: "9px", color: colors.textDim, textTransform: "uppercase", letterSpacing: "0.14em" }}>Months</div><div style={{ fontSize: "14px", fontWeight: 500, marginTop: "4px", fontFamily: "'IBM Plex Mono', monospace" }}>{elapsed} / {l.tenureMonths}</div></div>
+
+                {/* Linked Asset + Notes */}
+                <div style={{ marginBottom: "12px", display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
+                  {"linkedAsset" in l ? <div style={{ fontSize: "10px", color: colors.textDim, fontFamily: "'IBM Plex Mono', monospace", letterSpacing: "0.05em" }}>
+                    <span style={{ textTransform: "uppercase", letterSpacing: "0.1em" }}>Secured by: </span>
+                    <select style={{ ...s.select, fontSize: "10px", color: colors.accent }} value={l.linkedAsset || ""} onChange={e => updateItem("liabilities", l.id, "linkedAsset", e.target.value)}>
+                      <option value="">— Select asset —</option>
+                      {(data.realEstate || []).map(a => <option key={a.id} value={a.name}>{a.name} ({fmt(a.value, a.currency)})</option>)}
+                      {data.cashSavings.filter(c => c.amount > 0).map(a => <option key={a.id} value={a.name}>{a.name} ({fmt(a.amount, a.currency)})</option>)}
+                      {data.mutualFunds.filter(f => f.units > 0).map(a => <option key={a.id} value={a.name}>{a.name}</option>)}
+                      {(data.equityAccounts || []).map(a => <option key={a.id} value={a.name}>{a.name} ({a.stocks.length} stocks)</option>)}
+                    </select>
                   </div>
-                  {/* Principal paid back bar */}
-                  {(() => {
-                    const principalPaid = l.totalAmount - amort.remainingPrincipal;
-                    const paidPct = l.totalAmount > 0 ? (principalPaid / l.totalAmount) * 100 : 0;
-                    return <>
-                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
-                        <span style={{ fontSize: "10px", color: colors.green, fontFamily: "'IBM Plex Mono', monospace", letterSpacing: "0.1em", textTransform: "uppercase" }}>Paid {paidPct.toFixed(1)}%</span>
-                        <span style={{ fontSize: "10px", color: colors.red, fontFamily: "'IBM Plex Mono', monospace", letterSpacing: "0.1em", textTransform: "uppercase" }}>Remaining {(100 - paidPct).toFixed(1)}%</span>
-                      </div>
-                      <div style={{ height: "6px", background: colors.cardAlt, overflow: "hidden" }}>
-                        <div style={{ height: "100%", background: colors.green, width: `${paidPct}%`, transition: "width 0.5s" }} />
-                      </div>
-                    </>;
-                  })()}
-                  {/* Interest breakdown */}
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "10px", marginTop: "14px", paddingTop: "12px", borderTop: `1px solid ${colors.border}` }}>
-                    <div><div style={{ fontSize: "9px", color: colors.textDim, textTransform: "uppercase", letterSpacing: "0.14em" }}>Interest Paid</div><div style={{ fontSize: "13px", fontWeight: 500, marginTop: "4px", color: colors.green, fontFamily: "'IBM Plex Mono', monospace" }}>{fmt(amort.totalInterest - amort.remainingInterest, l.currency)}</div></div>
-                    <div><div style={{ fontSize: "9px", color: colors.textDim, textTransform: "uppercase", letterSpacing: "0.14em" }}>Total Interest</div><div style={{ fontSize: "13px", fontWeight: 500, marginTop: "4px", color: colors.textDim, fontFamily: "'IBM Plex Mono', monospace" }}>{fmt(amort.totalInterest, l.currency)}</div></div>
-                    <div><div style={{ fontSize: "9px", color: colors.textDim, textTransform: "uppercase", letterSpacing: "0.14em" }}>Interest Remaining</div><div style={{ fontSize: "13px", fontWeight: 500, marginTop: "4px", color: colors.red, fontFamily: "'IBM Plex Mono', monospace" }}>{fmt(amort.remainingInterest, l.currency)}</div></div>
+                  : <button style={{ ...s.btnOutline, padding: "2px 8px", fontSize: "9px" }} onClick={() => updateItem("liabilities", l.id, "linkedAsset", "")}>+ LINK ASSET</button>}
+                  {l.notes ? <span style={{ display: "inline-block", background: colors.card, padding: "2px 8px" }}><ECell value={l.notes} onChange={v => updateItem("liabilities", l.id, "notes", v)} multiline style={{ fontSize: "10px", color: "#c5cae0", background: "transparent" }} /></span>
+                  : <button style={{ ...s.btnOutline, padding: "2px 6px", fontSize: "9px" }} onClick={() => updateItem("liabilities", l.id, "notes", "Add note...")}>+ NOTE</button>}
+                </div>
+
+                {/* Main Stats Grid (shown if data available, else edit form) */}
+                {hasData ? <>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "12px", marginBottom: "16px" }}>
+                    <div>
+                      <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "9px", letterSpacing: "0.14em", color: colors.textDim, textTransform: "uppercase" }}>Principal</div>
+                      <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "16px", marginTop: "4px", fontWeight: 500 }}>{fmt(l.totalAmount, l.currency)}</div>
+                    </div>
+                    <div>
+                      <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "9px", letterSpacing: "0.14em", color: colors.textDim, textTransform: "uppercase" }}>Remaining</div>
+                      <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "16px", color: colors.red, marginTop: "4px", fontWeight: 500 }}>{fmt(amort.remainingPrincipal, l.currency)}</div>
+                    </div>
+                    <div>
+                      <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "9px", letterSpacing: "0.14em", color: colors.textDim, textTransform: "uppercase" }}>EMI</div>
+                      <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "16px", color: colors.accent, marginTop: "4px", fontWeight: 500 }}>{amort.emi ? fmt(amort.emi, l.currency) : "—"}<span style={{ fontSize: "10px", color: colors.textDim, marginLeft: "2px" }}>/mo</span></div>
+                    </div>
+                    <div>
+                      <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "9px", letterSpacing: "0.14em", color: colors.textDim, textTransform: "uppercase" }}>Months Left</div>
+                      <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "16px", marginTop: "4px", fontWeight: 500 }}>{remaining} / {l.tenureMonths}</div>
+                    </div>
                   </div>
-                  {(l.balloonAmount || 0) > 0 && <div style={{ marginTop: "10px", padding: "8px 12px", background: `${colors.accent}10`, border: `1px solid ${colors.accent}30` }}>
-                    <span style={{ fontSize: "9px", color: colors.accent, textTransform: "uppercase", letterSpacing: "0.14em" }}>Balloon (Schlussrate) </span>
-                    <span style={{ fontSize: "12px", color: colors.accent, fontFamily: "'IBM Plex Mono', monospace", fontWeight: 500 }}>{fmt(l.balloonAmount, l.currency)}</span>
+
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px", fontFamily: "'IBM Plex Mono', monospace", fontSize: "10px", letterSpacing: "0.1em", textTransform: "uppercase" }}>
+                    <span style={{ color: colors.green }}>Paid {paidPct.toFixed(1)}%</span>
+                    <span style={{ color: colors.red }}>Remaining {(100 - paidPct).toFixed(1)}%</span>
+                  </div>
+                  <div style={{ height: "8px", background: "#000", overflow: "hidden" }}>
+                    <div style={{ height: "100%", background: colors.green, width: `${paidPct}%`, transition: "width 0.5s" }} />
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "12px", marginTop: "16px", paddingTop: "12px", borderTop: `1px solid ${colors.gridLine}` }}>
+                    <div>
+                      <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "9px", letterSpacing: "0.14em", color: colors.textDim, textTransform: "uppercase" }}>Interest Paid</div>
+                      <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "13px", marginTop: "4px", color: colors.green, fontWeight: 500 }}>{fmt(amort.totalInterest - amort.remainingInterest, l.currency)}</div>
+                    </div>
+                    <div>
+                      <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "9px", letterSpacing: "0.14em", color: colors.textDim, textTransform: "uppercase" }}>Total Interest</div>
+                      <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "13px", marginTop: "4px", color: colors.textDim, fontWeight: 500 }}>{fmt(amort.totalInterest, l.currency)}</div>
+                    </div>
+                    <div>
+                      <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "9px", letterSpacing: "0.14em", color: colors.textDim, textTransform: "uppercase" }}>Interest Remaining</div>
+                      <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "13px", marginTop: "4px", color: colors.red, fontWeight: 500 }}>{fmt(amort.remainingInterest, l.currency)}</div>
+                    </div>
+                  </div>
+
+                  {(l.balloonAmount || 0) > 0 && <div style={{ marginTop: "12px", padding: "8px 12px", background: `${colors.accent}10`, border: `1px solid ${colors.accent}30`, display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                    <span style={{ fontSize: "9px", color: colors.accent, textTransform: "uppercase", letterSpacing: "0.14em", fontFamily: "'IBM Plex Mono', monospace" }}>Balloon (Schlussrate)</span>
+                    <span style={{ fontSize: "13px", color: colors.accent, fontFamily: "'IBM Plex Mono', monospace", fontWeight: 500 }}>{fmt(l.balloonAmount, l.currency)}</span>
                   </div>}
-                </div>
-              )}
-              {/* Special Payments */}
-              <div style={{ marginTop: "14px", padding: "12px", borderRadius: "8px", background: colors.card, border: `1px solid ${colors.border}` }}>
-                <div style={s.flex}>
-                  <div style={{ fontSize: "11px", fontWeight: 600, color: colors.textDim, textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                    Special Payments {spTotal > 0 && <span style={{ color: colors.green }}>({fmt(spTotal, l.currency)} total)</span>}
+                </> : <div style={{ padding: "16px", background: "#000", textAlign: "center", fontSize: "10px", color: colors.textMuted, letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'IBM Plex Mono', monospace", marginBottom: "12px" }}>Fill in loan details below to see amortization</div>}
+
+                {/* Edit Form - always visible in collapsible */}
+                <details style={{ marginTop: "12px" }}>
+                  <summary style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "10px", color: colors.textDim, letterSpacing: "0.1em", textTransform: "uppercase", cursor: "pointer", padding: "8px 0" }}>
+                    <span style={{ color: colors.accent, marginRight: "6px" }}>&gt;</span>Edit Loan Parameters
+                  </summary>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "10px", marginTop: "10px", padding: "12px", background: colors.card, border: `1px solid ${colors.border}` }}>
+                    <div><div style={{ fontSize: "9px", color: colors.textDim, textTransform: "uppercase", letterSpacing: "0.14em", fontFamily: "'IBM Plex Mono', monospace", marginBottom: "4px" }}>Principal</div><ECell value={l.totalAmount} type="number" onChange={v => updateItem("liabilities", l.id, "totalAmount", v)} /></div>
+                    <div><div style={{ fontSize: "9px", color: colors.textDim, textTransform: "uppercase", letterSpacing: "0.14em", fontFamily: "'IBM Plex Mono', monospace", marginBottom: "4px" }}>Interest Rate (%)</div><ECell value={l.interestRate} type="number" onChange={v => updateItem("liabilities", l.id, "interestRate", v)} /></div>
+                    <div>
+                      <div style={{ fontSize: "9px", color: colors.textDim, textTransform: "uppercase", letterSpacing: "0.14em", fontFamily: "'IBM Plex Mono', monospace", marginBottom: "4px" }}>EMI {l.manualEMI ? "(manual)" : "(auto)"}</div>
+                      {l.manualEMI ? <div style={{ display: "flex", alignItems: "center", gap: "4px" }}><ECell value={l.manualEMI} type="number" onChange={v => updateItem("liabilities", l.id, "manualEMI", v)} /><button style={{ ...s.btnDanger, fontSize: "8px", padding: "2px 4px" }} onClick={() => updateItem("liabilities", l.id, "manualEMI", 0)}>Reset</button></div>
+                      : <div style={{ display: "flex", alignItems: "center", gap: "6px" }}><span style={{ fontSize: "12px" }}>{amort.emi ? fmt(amort.emi, l.currency) : "—"}</span><button style={{ ...s.btnOutline, padding: "2px 6px", fontSize: "8px" }} onClick={() => updateItem("liabilities", l.id, "manualEMI", amort.emi || 0)}>Override</button></div>}
+                    </div>
+                    <div><div style={{ fontSize: "9px", color: colors.textDim, textTransform: "uppercase", letterSpacing: "0.14em", fontFamily: "'IBM Plex Mono', monospace", marginBottom: "4px" }}>Start Date</div><input type="date" style={{ ...s.input, width: "100%" }} value={l.startDate} onChange={e => updateItem("liabilities", l.id, "startDate", e.target.value)} /></div>
+                    <div><div style={{ fontSize: "9px", color: colors.textDim, textTransform: "uppercase", letterSpacing: "0.14em", fontFamily: "'IBM Plex Mono', monospace", marginBottom: "4px" }}>Tenure (months)</div><ECell value={l.tenureMonths} type="number" onChange={v => updateItem("liabilities", l.id, "tenureMonths", v)} /></div>
+                    <div><div style={{ fontSize: "9px", color: colors.textDim, textTransform: "uppercase", letterSpacing: "0.14em", fontFamily: "'IBM Plex Mono', monospace", marginBottom: "4px" }}>Balloon Payment</div><ECell value={l.balloonAmount || 0} type="number" onChange={v => updateItem("liabilities", l.id, "balloonAmount", v)} /></div>
+                    <div><div style={{ fontSize: "9px", color: colors.textDim, textTransform: "uppercase", letterSpacing: "0.14em", fontFamily: "'IBM Plex Mono', monospace", marginBottom: "4px" }}>Currency</div><CurrSelect value={l.currency} onChange={v => updateItem("liabilities", l.id, "currency", v)} /></div>
                   </div>
-                  <button style={{ ...s.btnOutline, padding: "3px 8px", fontSize: "9px" }} onClick={() => {
-                    const sp = [...(l.specialPayments || []), { id: uid(), date: new Date().toISOString().slice(0, 10), amount: 0, note: "" }];
-                    updateItem("liabilities", l.id, "specialPayments", sp);
-                  }}>+ Add</button>
+                </details>
+
+                {/* Special Payments */}
+                <div style={{ marginTop: "12px", padding: "12px", background: colors.card, border: `1px solid ${colors.border}` }}>
+                  <div style={s.flex}>
+                    <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "10px", color: colors.textDim, textTransform: "uppercase", letterSpacing: "0.14em" }}>
+                      <span style={{ color: colors.accent, marginRight: "6px" }}>&gt;</span>Special Payments {spTotal > 0 && <span style={{ color: colors.green }}>({fmt(spTotal, l.currency)})</span>}
+                    </div>
+                    <button style={{ ...s.btnOutline, padding: "3px 8px", fontSize: "9px" }} onClick={() => {
+                      const sp = [...(l.specialPayments || []), { id: uid(), date: new Date().toISOString().slice(0, 10), amount: 0, note: "" }];
+                      updateItem("liabilities", l.id, "specialPayments", sp);
+                    }}>+ ADD</button>
+                  </div>
+                  {(l.specialPayments || []).length === 0 ? <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "10px", color: colors.textMuted, marginTop: "10px", textAlign: "center", letterSpacing: "0.1em", textTransform: "uppercase", padding: "8px 0" }}>No prepayments recorded</div> :
+                  <table style={{ ...s.table, marginTop: "8px" }}>
+                    <thead><tr><th style={s.th}>Date</th><th style={s.th}>Amount</th><th style={s.th}>Note</th><th style={s.th}></th></tr></thead>
+                    <tbody>{(l.specialPayments || []).map((sp, idx) => (
+                      <tr key={sp.id || idx}>
+                        <td style={s.td}><input type="date" style={{ ...s.input, width: "130px" }} value={sp.date} onChange={e => {
+                          const sps = [...(l.specialPayments || [])]; sps[idx] = { ...sps[idx], date: e.target.value };
+                          updateItem("liabilities", l.id, "specialPayments", sps);
+                        }} /></td>
+                        <td style={s.td}><ECell value={sp.amount} type="number" onChange={v => {
+                          const sps = [...(l.specialPayments || [])]; sps[idx] = { ...sps[idx], amount: v };
+                          updateItem("liabilities", l.id, "specialPayments", sps);
+                        }} /></td>
+                        <td style={s.td}><ECell value={sp.note || ""} onChange={v => {
+                          const sps = [...(l.specialPayments || [])]; sps[idx] = { ...sps[idx], note: v };
+                          updateItem("liabilities", l.id, "specialPayments", sps);
+                        }} /></td>
+                        <td style={s.td}><button style={s.btnDanger} onClick={() => {
+                          const sps = [...(l.specialPayments || [])]; sps.splice(idx, 1);
+                          updateItem("liabilities", l.id, "specialPayments", sps);
+                        }}>×</button></td>
+                      </tr>
+                    ))}</tbody>
+                  </table>}
                 </div>
-                {(l.specialPayments || []).length === 0 ? <div style={{ fontSize: "11px", color: colors.textMuted, marginTop: "6px" }}>No special payments recorded</div> :
-                <table style={{ ...s.table, marginTop: "8px" }}>
-                  <thead><tr><th style={s.th}>Date</th><th style={s.th}>Amount</th><th style={s.th}>Note</th><th style={s.th}></th></tr></thead>
-                  <tbody>{(l.specialPayments || []).map((sp, idx) => (
-                    <tr key={sp.id || idx}>
-                      <td style={s.td}><input type="date" style={{ ...s.input, width: "130px" }} value={sp.date} onChange={e => {
-                        const sps = [...(l.specialPayments || [])]; sps[idx] = { ...sps[idx], date: e.target.value };
-                        updateItem("liabilities", l.id, "specialPayments", sps);
-                      }} /></td>
-                      <td style={s.td}><ECell value={sp.amount} type="number" onChange={v => {
-                        const sps = [...(l.specialPayments || [])]; sps[idx] = { ...sps[idx], amount: v };
-                        updateItem("liabilities", l.id, "specialPayments", sps);
-                      }} /></td>
-                      <td style={s.td}><ECell value={sp.note || ""} onChange={v => {
-                        const sps = [...(l.specialPayments || [])]; sps[idx] = { ...sps[idx], note: v };
-                        updateItem("liabilities", l.id, "specialPayments", sps);
-                      }} /></td>
-                      <td style={s.td}><button style={s.btnDanger} onClick={() => {
-                        const sps = [...(l.specialPayments || [])]; sps.splice(idx, 1);
-                        updateItem("liabilities", l.id, "specialPayments", sps);
-                      }}>×</button></td>
-                    </tr>
-                  ))}</tbody>
-                </table>}
               </div>
-            </div>
-          );
-        })}
-      </div>}
-      <div style={{ marginTop: "12px", fontSize: "13px", fontWeight: 600, textAlign: "right" }}>Total Outstanding: {fmtBoth(calc.totalLiabEur, rate)}</div>
+            );
+          })}
+        </div>}
+      </div>
     </div>
   );
 
