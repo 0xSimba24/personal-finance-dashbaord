@@ -478,7 +478,7 @@ export default function App() {
   const [refreshing, setRefreshing] = useState(false);
   const [refreshMsg, setRefreshMsg] = useState("");
   const [showPriceSetup, setShowPriceSetup] = useState(false);
-  const [showDailyMovers, setShowDailyMovers] = useState(false);
+  const [showDailyMovers, setShowDailyMovers] = useState(true);
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
   const [allocFilter, setAllocFilter] = useState({ liquid: true, illiquid: true });
 
@@ -759,56 +759,58 @@ export default function App() {
         const eLosers = eSorted.filter(m => m.pct < 0).reverse().slice(0, 3);
 
         const MoverRow = ({ m, isGain }) => (
-          <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 10px", borderRadius: "6px", background: isGain ? colors.greenBg : colors.redBg, marginBottom: "4px" }}>
-            <div><span style={{ fontSize: "12px", fontWeight: 600 }}>{m.name}</span>{m.acct && <span style={{ fontSize: "10px", color: colors.textDim, marginLeft: "6px" }}>{m.acct}</span>}</div>
-            <div style={{ textAlign: "right" }}><span style={{ fontSize: "12px", fontWeight: 700, color: isGain ? colors.green : colors.red }}>{isGain ? "+" : ""}{m.pct.toFixed(2)}%</span><span style={{ fontSize: "10px", color: colors.textDim, marginLeft: "6px" }}>{isGain ? "+" : ""}{fmt(m.changeEur)}</span></div>
+          <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", fontFamily: "'IBM Plex Mono', monospace", fontSize: "12px" }}>
+            <span>
+              <span style={{ color: colors.text }}>{m.name}</span>
+              {m.acct && <span style={{ fontSize: "10px", color: colors.textMuted, marginLeft: "6px" }}>{m.acct}</span>}
+            </span>
+            <span style={{ display: "flex", gap: "12px", alignItems: "baseline" }}>
+              <span style={{ color: isGain ? colors.green : colors.red, minWidth: "58px", textAlign: "right" }}>{isGain ? "+" : ""}{m.pct.toFixed(2)}%</span>
+              <span style={{ color: colors.textDim, minWidth: "52px", textAlign: "right", fontSize: "11px" }}>{isGain ? "+" : ""}{fmt(m.changeEur)}</span>
+            </span>
           </div>
         );
 
         return (
           <div style={s.card}>
-            <div style={{ ...s.flex, cursor: "pointer" }} onClick={() => setShowDailyMovers(!showDailyMovers)}>
+            <div style={{ ...s.flex, cursor: "pointer", marginBottom: showDailyMovers ? "0" : "0" }} onClick={() => setShowDailyMovers(!showDailyMovers)}>
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <span style={{ fontSize: "12px", color: colors.textDim, width: "16px", transition: "transform 0.2s", transform: showDailyMovers ? "rotate(90deg)" : "rotate(0deg)" }}>▶</span>
+                <span style={{ fontSize: "10px", color: colors.textDim, transition: "transform 0.2s", transform: showDailyMovers ? "rotate(90deg)" : "rotate(0deg)", display: "inline-block" }}>▶</span>
                 <H2>Daily Movers</H2>
               </div>
-              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <span style={{ fontSize: "11px", color: colors.textDim }}>Portfolio Today:</span>
-                <span style={{ fontSize: "16px", fontWeight: 700, color: totalDayChange >= 0 ? colors.green : colors.red }}>
-                  {totalDayChange >= 0 ? "+" : ""}{fmt(totalDayChange)} ({totalDayPct >= 0 ? "+" : ""}{totalDayPct.toFixed(2)}%)
+              <div style={{ display: "flex", alignItems: "baseline", gap: "10px", fontFamily: "'IBM Plex Mono', monospace" }}>
+                <span style={{ fontSize: "9px", color: colors.textDim, textTransform: "uppercase", letterSpacing: "0.14em" }}>Portf Today</span>
+                <span style={{ fontSize: "15px", fontWeight: 500, color: totalDayChange >= 0 ? colors.green : colors.red }}>
+                  {totalDayChange >= 0 ? "▲ +" : "▼ "}{fmt(totalDayChange)} · {totalDayPct >= 0 ? "+" : ""}{totalDayPct.toFixed(2)}%
                 </span>
               </div>
             </div>
-            {showDailyMovers && <>
-
-            {cryptoMovers.length > 0 && <>
-              <div style={{ fontSize: "11px", fontWeight: 700, color: "#f59e0b", textTransform: "uppercase", letterSpacing: "0.5px", marginTop: "14px", marginBottom: "8px" }}>Crypto</div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
-                <div>
-                  <div style={{ fontSize: "10px", fontWeight: 600, color: colors.green, marginBottom: "4px" }}>Gainers</div>
-                  {cGainers.length === 0 ? <div style={{ fontSize: "11px", color: colors.textDim }}>—</div> : cGainers.map((g, i) => <MoverRow key={i} m={g} isGain />)}
+            {showDailyMovers && <div style={{ marginTop: "14px", marginLeft: "-16px", marginRight: "-16px", marginBottom: "-16px" }}>
+              {/* Section labels */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", borderTop: `1px solid ${colors.border}`, borderBottom: `1px solid ${colors.border}` }}>
+                <div style={{ padding: "8px 16px", borderRight: `1px solid ${colors.border}` }}>
+                  <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "9px", letterSpacing: "0.14em", color: colors.magenta, textTransform: "uppercase" }}>Crypto</div>
                 </div>
-                <div>
-                  <div style={{ fontSize: "10px", fontWeight: 600, color: colors.red, marginBottom: "4px" }}>Losers</div>
-                  {cLosers.length === 0 ? <div style={{ fontSize: "11px", color: colors.textDim }}>—</div> : cLosers.map((l, i) => <MoverRow key={i} m={l} isGain={false} />)}
+                <div style={{ padding: "8px 16px" }}>
+                  <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "9px", letterSpacing: "0.14em", color: colors.accent, textTransform: "uppercase" }}>Direct Equity & MFs</div>
                 </div>
               </div>
-            </>}
-
-            {equityMovers.length > 0 && <>
-              <div style={{ fontSize: "11px", fontWeight: 700, color: "#8b5cf6", textTransform: "uppercase", letterSpacing: "0.5px", marginTop: "14px", marginBottom: "8px" }}>Direct Equity & MFs</div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
-                <div>
-                  <div style={{ fontSize: "10px", fontWeight: 600, color: colors.green, marginBottom: "4px" }}>Gainers</div>
-                  {eGainers.length === 0 ? <div style={{ fontSize: "11px", color: colors.textDim }}>—</div> : eGainers.map((g, i) => <MoverRow key={i} m={g} isGain />)}
+              {/* Gainers/Losers grid */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr" }}>
+                <div style={{ padding: "12px 16px", borderRight: `1px solid ${colors.border}` }}>
+                  <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "9px", letterSpacing: "0.1em", color: colors.green, marginBottom: "6px", textTransform: "uppercase" }}>▲ Gainers</div>
+                  {cGainers.length === 0 ? <div style={{ fontSize: "10px", color: colors.textMuted, fontFamily: "'IBM Plex Mono', monospace" }}>—</div> : cGainers.map((g, i) => <MoverRow key={i} m={g} isGain />)}
+                  <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "9px", letterSpacing: "0.1em", color: colors.red, margin: "12px 0 6px", textTransform: "uppercase" }}>▼ Losers</div>
+                  {cLosers.length === 0 ? <div style={{ fontSize: "10px", color: colors.textMuted, fontFamily: "'IBM Plex Mono', monospace" }}>—</div> : cLosers.map((l, i) => <MoverRow key={i} m={l} isGain={false} />)}
                 </div>
-                <div>
-                  <div style={{ fontSize: "10px", fontWeight: 600, color: colors.red, marginBottom: "4px" }}>Losers</div>
-                  {eLosers.length === 0 ? <div style={{ fontSize: "11px", color: colors.textDim }}>—</div> : eLosers.map((l, i) => <MoverRow key={i} m={l} isGain={false} />)}
+                <div style={{ padding: "12px 16px" }}>
+                  <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "9px", letterSpacing: "0.1em", color: colors.green, marginBottom: "6px", textTransform: "uppercase" }}>▲ Gainers</div>
+                  {eGainers.length === 0 ? <div style={{ fontSize: "10px", color: colors.textMuted, fontFamily: "'IBM Plex Mono', monospace" }}>—</div> : eGainers.map((g, i) => <MoverRow key={i} m={g} isGain />)}
+                  <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "9px", letterSpacing: "0.1em", color: colors.red, margin: "12px 0 6px", textTransform: "uppercase" }}>▼ Losers</div>
+                  {eLosers.length === 0 ? <div style={{ fontSize: "10px", color: colors.textMuted, fontFamily: "'IBM Plex Mono', monospace" }}>—</div> : eLosers.map((l, i) => <MoverRow key={i} m={l} isGain={false} />)}
                 </div>
               </div>
-            </>}
-          </>}
+            </div>}
           </div>
         );
       })()}
