@@ -480,6 +480,7 @@ export default function App() {
   const [showPriceSetup, setShowPriceSetup] = useState(false);
   const [showDailyMovers, setShowDailyMovers] = useState(true);
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
+  const [showCompletedPhases, setShowCompletedPhases] = useState(false);
   const [allocFilter, setAllocFilter] = useState({ liquid: true, illiquid: true });
 
   const refreshPrices = useCallback(async () => {
@@ -1248,7 +1249,7 @@ export default function App() {
         {subTab === "mf" && <div style={s.card}>
           <div style={s.flex}><H2>Mutual Funds / ETFs</H2><button style={s.btn} onClick={() => addItem("mutualFunds", { name: "New Fund", units: 0, totalInvested: 0, currentPrice: 0, currency: "INR", liquid: true })}>+ Add</button></div>
           {(data.priceHistory || []).length >= 2 && <div style={{ marginBottom: "14px" }}>
-            <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: h.mfTotal || 0 }))} title="MF / ETF Total" />
+            <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: h.mfTotal || 0 }))} />
             {data.mutualFunds.filter(f => f.units > 0).length > 1 && <div style={{ marginTop: "14px" }}>
               <MultiLineChart
                 history={data.priceHistory}
@@ -1269,7 +1270,7 @@ export default function App() {
 
         {subTab === "eq" && <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
           {(data.priceHistory || []).length >= 2 && <div style={s.card}>
-            <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: h.eqTotal || 0 }))} title="Direct Equity Total" color="#8b5cf6" />
+            <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: h.eqTotal || 0 }))} color="#8b5cf6" />
             {(data.equityAccounts || []).filter(a => a.stocks.some(st => st.quantity > 0)).length > 1 && <div style={{ marginTop: "14px" }}>
               <MultiLineChart
                 history={data.priceHistory}
@@ -1378,7 +1379,7 @@ export default function App() {
         {subTab === "cash" && <div style={s.card}>
           <div style={s.flex}><H2>Cash & Savings</H2><button style={s.btn} onClick={() => addItem("cashSavings", { name: "New", type: "Bank", amount: 0, currency: "EUR", liquid: true })}>+ Add</button></div>
           {(data.priceHistory || []).length >= 2 && <div style={{ marginBottom: "14px" }}>
-            <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: h.cashTotal || 0 }))} title="Cash & Savings Total" color="#22c997" />
+            <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: h.cashTotal || 0 }))} color="#22c997" />
           </div>}
           <table style={s.table}><thead><tr><th style={s.th}>Account</th><th style={s.th}>Type</th><th style={s.th}>Amount</th><th style={s.th}>Curr</th><th style={s.th}>EUR</th><th style={s.th}>Liq</th><th style={s.th}></th></tr></thead>
           <tbody>{data.cashSavings.map(c => <tr key={c.id}><td style={s.td}><ECell value={c.name} onChange={v => updateItem("cashSavings", c.id, "name", v)} />{c.notes ? <div style={{ marginTop: "4px" }}><span style={{ display: "inline-block", background: colors.cardAlt, padding: "2px 8px", borderRadius: "4px", marginLeft: "-8px" }}><ECell value={c.notes} onChange={v => updateItem("cashSavings", c.id, "notes", v)} multiline style={{ fontSize: "10px", color: "#c5cae0", background: "transparent" }} /></span></div> : <div style={{ marginTop: "2px" }}><span style={{ fontSize: "8px", color: colors.border, cursor: "pointer" }} onClick={() => updateItem("cashSavings", c.id, "notes", "Add note...")}>+ note</span></div>}</td><td style={s.td}><select style={s.select} value={c.type} onChange={e => updateItem("cashSavings", c.id, "type", e.target.value)}><option>Bank</option><option>FD</option><option>RD</option><option>Other</option></select></td><td style={s.td}><ECell value={c.amount} type="number" onChange={v => updateItem("cashSavings", c.id, "amount", v)} /></td><td style={s.td}><CurrSelect value={c.currency} onChange={v => updateItem("cashSavings", c.id, "currency", v)} /></td><td style={s.td}>{fmt(toEur(c.amount, c.currency, rate))}</td><td style={s.td}><button style={s.liqBadge(c.liquid)} onClick={() => updateItem("cashSavings", c.id, "liquid", !c.liquid)}>{c.liquid ? "LIQ" : "ILLIQ"}</button></td><td style={s.td}><button style={s.btnDanger} onClick={() => removeItem("cashSavings", c.id)}>×</button></td></tr>)}</tbody></table>
@@ -1388,7 +1389,7 @@ export default function App() {
         {subTab === "crypto" && <div style={s.card}>
           <div style={s.flex}><H2>Crypto</H2><button style={s.btn} onClick={() => addItem("crypto", { name: "Token", quantity: 0, costPrice: 0, currentPrice: 0, currency: "USD", liquid: true })}>+ Add</button></div>
           {(data.priceHistory || []).length >= 2 && <div style={{ marginBottom: "14px" }}>
-            <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: h.cryptoTotal || 0 }))} title="Crypto Total" color="#f59e0b" />
+            <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: h.cryptoTotal || 0 }))} color="#f59e0b" />
           </div>}
           <div style={{ overflowX: "auto" }}><table style={s.table}><thead><tr><th style={s.th}>Token</th><th style={s.th}>Qty</th><th style={s.th}>Cost</th><th style={s.th}>Current</th><th style={s.th}>Invested</th><th style={s.th}>Value</th><th style={s.th}>P/L</th><th style={s.th}>Liq</th><th style={s.th}></th></tr></thead>
           <tbody>{data.crypto.map(c => {
@@ -1409,9 +1410,9 @@ export default function App() {
         </div>}
 
         {subTab === "re" && <div style={s.card}>
-          <div style={s.flex}><H2>Real Estate</H2><button style={s.btn} onClick={() => update("realEstate", [...(data.realEstate || []), { id: uid(), name: "Property", value: 0, currency: "INR", liquid: false }])}>+ Add</button></div>
+          <div style={s.flex}><H2>Physical Assets</H2><button style={s.btn} onClick={() => update("realEstate", [...(data.realEstate || []), { id: uid(), name: "Property", value: 0, currency: "INR", liquid: false }])}>+ Add</button></div>
           {(data.priceHistory || []).length >= 2 && (data.priceHistory || []).some(h => h.reTotal > 0) && <div style={{ marginBottom: "14px" }}>
-            <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: h.reTotal || 0 }))} title="Physical Assets Total" color="#3b82f6" />
+            <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: h.reTotal || 0 }))} color="#3b82f6" />
           </div>}
           {(!data.realEstate || data.realEstate.length === 0) ? <div style={{ fontSize: "12px", color: colors.textDim, padding: "12px 0" }}>No real estate</div> :
           <table style={s.table}><thead><tr><th style={s.th}>Name</th><th style={s.th}>Value</th><th style={s.th}>Curr</th><th style={s.th}>EUR</th><th style={s.th}>Liq</th><th style={s.th}></th></tr></thead>
@@ -1421,7 +1422,7 @@ export default function App() {
         {subTab === "esop" && <div style={s.card}>
           <div style={s.flex}><H2>ESOPs</H2><button style={s.btn} onClick={() => addItem("esops", { company: "Company", strikePrice: 0, quantity: 0, currentPrice: 0, vestedQty: 0, unvestedQty: 0, currency: "EUR", liquid: false })}>+ Add</button></div>
           {(data.priceHistory || []).length >= 2 && (data.priceHistory || []).some(h => h.esopTotal > 0) && <div style={{ marginBottom: "14px" }}>
-            <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: h.esopTotal || 0 }))} title="ESOPs Total" color="#ec4899" />
+            <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: h.esopTotal || 0 }))} color="#ec4899" />
           </div>}
           <div style={{ overflowX: "auto" }}><table style={s.table}><thead><tr><th style={s.th}>Company</th><th style={s.th}>Strike</th><th style={s.th}>Current</th><th style={s.th}>Total</th><th style={s.th}>Vested</th><th style={s.th}>Unvested</th><th style={s.th}>Vested Val</th><th style={s.th}>Unvested Val</th><th style={s.th}>Liq</th><th style={s.th}></th></tr></thead>
           <tbody>{data.esops.map(e => {
@@ -1488,12 +1489,15 @@ export default function App() {
         <div style={s.card}>
           <div style={s.flex}>
             <H2>Surplus Allocation · By Phase</H2>
-            <span style={{ fontSize: "10px", color: colors.textDim, letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'IBM Plex Mono', monospace" }}>
-              {fmt(calc.totalAllocEur)} /MO
-            </span>
+            <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+              {data.phases.some(p => p.status === "complete") && <button style={{ ...s.btnOutline, padding: "3px 8px", fontSize: "9px" }} onClick={() => setShowCompletedPhases(!showCompletedPhases)}>{showCompletedPhases ? "HIDE" : "SHOW"} COMPLETED</button>}
+              <span style={{ fontSize: "10px", color: colors.textDim, letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'IBM Plex Mono', monospace" }}>
+                {fmt(calc.totalAllocEur)} /MO
+              </span>
+            </div>
           </div>
           <div style={{ marginTop: "10px" }}>
-            {data.phases.map(phase => {
+            {data.phases.filter(phase => showCompletedPhases || phase.status !== "complete").map(phase => {
               const items = groupedAlloc[phase.id] || [];
               const pTotal = items.reduce((s, i) => s + toEur(i.amount, i.currency, rate), 0);
               const isCurrentPhase = phase.id === data.settings.currentPhase;
@@ -1671,8 +1675,8 @@ export default function App() {
                   </div>
 
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px", fontFamily: "'IBM Plex Mono', monospace", fontSize: "10px", letterSpacing: "0.1em", textTransform: "uppercase" }}>
-                    <span style={{ color: colors.green }}>Paid {paidPct.toFixed(1)}%</span>
-                    <span style={{ color: colors.red }}>Remaining {(100 - paidPct).toFixed(1)}%</span>
+                    <span style={{ color: colors.green }}>Paid {fmt(principalPaid, l.currency)} · {paidPct.toFixed(1)}%</span>
+                    <span style={{ color: colors.red }}>Remaining {fmt(amort.remainingPrincipal, l.currency)} · {(100 - paidPct).toFixed(1)}%</span>
                   </div>
                   <div style={{ height: "8px", background: "#000", overflow: "hidden" }}>
                     <div style={{ height: "100%", background: colors.green, width: `${paidPct}%`, transition: "width 0.5s" }} />
@@ -1801,6 +1805,9 @@ export default function App() {
             const liabPath = sorted.map((s, i) => `${i === 0 ? "M" : "L"} ${x(i).toFixed(1)} ${y(s.liabilities || 0).toFixed(1)}`).join(" ");
             const liabArea = `${liabPath} L ${x(sorted.length - 1)} ${padT + ih} L ${x(0)} ${padT + ih} Z`;
 
+            // Show first, middle, last dates only to avoid overlap
+            const labelIndices = sorted.length <= 3 ? sorted.map((_, i) => i) : [0, Math.floor(sorted.length / 2), sorted.length - 1];
+
             return <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ width: "100%", height: H, marginTop: "12px", display: "block" }}>
               {[0, 0.25, 0.5, 0.75, 1].map((t, i) => {
                 const gy = padT + ih - t * ih;
@@ -1813,6 +1820,10 @@ export default function App() {
               <path d={grossPath} fill="none" stroke={colors.green} strokeWidth="1.5" />
               <path d={liabArea} fill={colors.red} opacity="0.15" />
               <path d={liabPath} fill="none" stroke={colors.red} strokeWidth="1.5" />
+              {labelIndices.map(i => {
+                const date = new Date(sorted[i].date).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+                return <text key={i} x={x(i)} y={H - 4} fontFamily="'IBM Plex Mono',monospace" fontSize="9" fill={colors.textMuted} textAnchor={i === 0 ? "start" : i === sorted.length - 1 ? "end" : "middle"}>{date}</text>;
+              })}
             </svg>;
           })()}
           <div style={{ display: "flex", gap: "20px", marginTop: "12px", fontFamily: "'IBM Plex Mono', monospace", fontSize: "10px", color: colors.textDim, letterSpacing: "0.1em", textTransform: "uppercase" }}>
