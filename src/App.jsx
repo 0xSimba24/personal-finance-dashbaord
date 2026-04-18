@@ -709,7 +709,7 @@ export default function App() {
       </div>
 
       {/* TWO-COLUMN GRID */}
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(280px, 380px)", gap: "14px" }} className="overview-grid">
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 380px", gap: "14px" }} className="overview-grid">
         <div style={{ display: "flex", flexDirection: "column", gap: "14px", minWidth: 0 }}>
           {/* Main column */}
           {(data.priceHistory || []).length >= 2 && <div style={s.card}>
@@ -812,25 +812,55 @@ export default function App() {
           </div>
         );
       })()}
+
+      {/* Goals Timeline - inside left column */}
+      <div style={s.card}>
+        <div style={s.flex}>
+          <H2>Goals Timeline</H2>
+          <button style={s.btn} onClick={() => update("goals", [...(data.goals || []), { id: uid(), name: "New Goal", targetDate: "", notes: "" }])}>+ ADD GOAL</button>
+        </div>
+        {(!data.goals || data.goals.length === 0) ? <div style={{ fontSize: "10px", color: colors.textDim, padding: "16px 0", textAlign: "center", letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'IBM Plex Mono', monospace" }}>No goals · Add key dates like India move, kid planned, loan payoff</div> :
+        <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "10px" }}>
+          {(data.goals || []).slice().sort((a, b) => (a.targetDate || "9999").localeCompare(b.targetDate || "9999")).map(g => {
+            const targetMs = g.targetDate ? new Date(g.targetDate).getTime() : 0;
+            const daysAway = targetMs > 0 ? Math.ceil((targetMs - Date.now()) / 86400000) : null;
+            const isPast = daysAway !== null && daysAway < 0;
+            return (
+              <div key={g.id} style={{ display: "flex", alignItems: "center", gap: "12px", padding: "8px 12px", background: colors.cardAlt, border: `1px solid ${colors.border}`, opacity: isPast ? 0.6 : 1 }}>
+                <div style={{ flex: 1 }}>
+                  <ECell value={g.name} onChange={v => update("goals", data.goals.map(x => x.id === g.id ? { ...x, name: v } : x))} style={{ fontSize: "12px", fontWeight: 500 }} />
+                  {g.notes && <div style={{ fontSize: "10px", color: colors.textDim, marginTop: "2px" }}><ECell value={g.notes} onChange={v => update("goals", data.goals.map(x => x.id === g.id ? { ...x, notes: v } : x))} multiline style={{ fontSize: "10px", color: colors.textDim }} /></div>}
+                </div>
+                <input type="date" style={{ ...s.input, padding: "4px 8px", fontSize: "11px", width: "130px" }} value={g.targetDate || ""} onChange={e => update("goals", data.goals.map(x => x.id === g.id ? { ...x, targetDate: e.target.value } : x))} />
+                {daysAway !== null && <span style={{ fontSize: "10px", color: isPast ? colors.textMuted : daysAway < 90 ? colors.accent : colors.textDim, minWidth: "60px", textAlign: "right", fontFamily: "'IBM Plex Mono', monospace", letterSpacing: "0.05em", textTransform: "uppercase" }}>
+                  {isPast ? "Past" : daysAway < 30 ? `${daysAway}d` : daysAway < 365 ? `${Math.round(daysAway / 30)}mo` : `${(daysAway / 365).toFixed(1)}y`}
+                </span>}
+                {!g.notes && <button style={{ ...s.btnOutline, padding: "2px 6px", fontSize: "9px" }} onClick={() => update("goals", data.goals.map(x => x.id === g.id ? { ...x, notes: "Add note..." } : x))}>+ NOTE</button>}
+                <button style={s.btnDanger} onClick={() => update("goals", data.goals.filter(x => x.id !== g.id))}>×</button>
+              </div>
+            );
+          })}
+        </div>}
+      </div>
         </div>{/* end left column */}
 
         <div style={{ display: "flex", flexDirection: "column", gap: "14px", minWidth: 0 }}>
           {/* Right rail */}
       <div style={s.card}>
         <div style={s.flex}>
-          <H2>Portfolio Allocation</H2>
-          <div style={{ display: "flex", gap: "4px" }}>
+          <H2>Allocation · Asset Class</H2>
+          <div style={{ display: "flex", gap: "2px" }}>
             {[{ key: "liquid", label: "Liquid" }, { key: "illiquid", label: "Illiquid" }].map(f => {
               const active = allocFilter[f.key];
               return <button key={f.key} onClick={() => {
                 const other = f.key === "liquid" ? "illiquid" : "liquid";
-                // Force at least one to stay on
                 if (active && !allocFilter[other]) return;
                 setAllocFilter({ ...allocFilter, [f.key]: !active });
               }} style={{
-                padding: "4px 12px", borderRadius: "4px", border: "none", cursor: "pointer",
-                fontSize: "10px", fontWeight: 600, fontFamily: "inherit",
-                background: active ? colors.accent : colors.cardAlt,
+                padding: "3px 8px", borderRadius: 0, border: `1px solid ${active ? colors.accent : colors.border}`, cursor: "pointer",
+                fontSize: "9px", fontWeight: 500, fontFamily: "'IBM Plex Mono', monospace",
+                letterSpacing: "0.1em", textTransform: "uppercase",
+                background: active ? colors.accent : "transparent",
                 color: active ? colors.bg : colors.textDim,
               }}>{f.label}</button>;
             })}
@@ -839,10 +869,8 @@ export default function App() {
         {(() => {
           const useL = allocFilter.liquid, useI = allocFilter.illiquid;
           const pick = (v) => (useL && useI) ? v.total : useL ? v.liquid : (v.total - v.liquid);
-          return <div style={{ display: "flex", flexDirection: "column", gap: "20px", marginTop: "12px" }}>
-            {/* Asset allocation donut */}
+          return <div style={{ marginTop: "12px" }}>
             <DonutChart
-              title="By Asset Class"
               segments={[
                 { label: "MFs / ETFs", value: pick(calc.mfValue), color: colors.cyan },
                 { label: "Direct Equity", value: pick(calc.eqValue), color: colors.accent },
@@ -852,29 +880,47 @@ export default function App() {
                 { label: "ESOPs", value: pick(calc.esopValue), color: colors.violet },
               ].filter(x => x.value > 0)}
             />
-            {/* Currency exposure donut */}
-            {(() => {
-              const currExp = { EUR: 0, INR: 0, USD: 0 };
-              const usdRate = data.settings.eurToUsd || 1.08;
-              const cvt = (amt, curr) => curr === "EUR" ? amt : curr === "INR" ? amt / rate : amt / usdRate;
-              const match = (liq) => (useL && useI) || (useL && liq) || (useI && !liq);
+          </div>;
+        })()}
+      </div>
 
-              data.mutualFunds.forEach(f => { if (match(f.liquid)) { const v = f.units * f.currentPrice; currExp[f.currency] = (currExp[f.currency] || 0) + cvt(v, f.currency); }});
-              (data.equityAccounts || []).forEach(a => a.stocks.forEach(st => { if (match(st.liquid)) { const v = st.quantity * st.currentPrice; currExp[st.currency] = (currExp[st.currency] || 0) + cvt(v, st.currency); }}));
-              data.cashSavings.forEach(c => { if (match(c.liquid)) currExp[c.currency] = (currExp[c.currency] || 0) + cvt(c.amount, c.currency); });
-              data.crypto.forEach(c => { if (match(c.liquid)) { const v = c.quantity * c.currentPrice; currExp["USD"] = (currExp["USD"] || 0) + v / usdRate; }});
-              (data.realEstate || []).forEach(p => { if (match(p.liquid)) currExp[p.currency] = (currExp[p.currency] || 0) + cvt(p.value, p.currency); });
-              data.esops.forEach(e => { if (match(e.liquid)) { const v = Math.max(0, (e.vestedQty + e.unvestedQty) * (e.currentPrice - e.strikePrice)); currExp[e.currency] = (currExp[e.currency] || 0) + cvt(v, e.currency); }});
+      {/* By Currency */}
+      <div style={s.card}>
+        <H2>By Currency</H2>
+        {(() => {
+          const useL = allocFilter.liquid, useI = allocFilter.illiquid;
+          const currExp = { EUR: 0, INR: 0, USD: 0 };
+          const usdRate = data.settings.eurToUsd || 1.08;
+          const cvt = (amt, curr) => curr === "EUR" ? amt : curr === "INR" ? amt / rate : amt / usdRate;
+          const match = (liq) => (useL && useI) || (useL && liq) || (useI && !liq);
 
-              return <DonutChart
-                title="By Currency"
-                segments={[
-                  { label: "EUR", value: currExp.EUR || 0, color: colors.cyan },
-                  { label: "INR", value: currExp.INR || 0, color: colors.accent },
-                  { label: "USD", value: currExp.USD || 0, color: colors.green },
-                ].filter(x => x.value > 0)}
-              />;
-            })()}
+          data.mutualFunds.forEach(f => { if (match(f.liquid)) { const v = f.units * f.currentPrice; currExp[f.currency] = (currExp[f.currency] || 0) + cvt(v, f.currency); }});
+          (data.equityAccounts || []).forEach(a => a.stocks.forEach(st => { if (match(st.liquid)) { const v = st.quantity * st.currentPrice; currExp[st.currency] = (currExp[st.currency] || 0) + cvt(v, st.currency); }}));
+          data.cashSavings.forEach(c => { if (match(c.liquid)) currExp[c.currency] = (currExp[c.currency] || 0) + cvt(c.amount, c.currency); });
+          data.crypto.forEach(c => { if (match(c.liquid)) { const v = c.quantity * c.currentPrice; currExp["USD"] = (currExp["USD"] || 0) + v / usdRate; }});
+          (data.realEstate || []).forEach(p => { if (match(p.liquid)) currExp[p.currency] = (currExp[p.currency] || 0) + cvt(p.value, p.currency); });
+          data.esops.forEach(e => { if (match(e.liquid)) { const v = Math.max(0, (e.vestedQty + e.unvestedQty) * (e.currentPrice - e.strikePrice)); currExp[e.currency] = (currExp[e.currency] || 0) + cvt(v, e.currency); }});
+
+          const total = currExp.EUR + currExp.INR + currExp.USD;
+          const items = [
+            { ccy: "EUR", val: currExp.EUR, color: colors.cyan },
+            { ccy: "INR", val: currExp.INR, color: colors.accent },
+            { ccy: "USD", val: currExp.USD, color: colors.green },
+          ].filter(x => x.val > 0);
+
+          return <div style={{ marginTop: "12px" }}>
+            {items.map(c => {
+              const pct = total > 0 ? (c.val / total * 100) : 0;
+              return <div key={c.ccy} style={{ marginBottom: "14px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontFamily: "'IBM Plex Mono', monospace", fontSize: "11px", marginBottom: "6px" }}>
+                  <span style={{ color: colors.text, fontWeight: 500 }}>{c.ccy}</span>
+                  <span style={{ color: colors.textDim }}>{fmt(c.val)} · {pct.toFixed(1)}%</span>
+                </div>
+                <div style={{ height: "6px", background: colors.cardAlt, overflow: "hidden" }}>
+                  <div style={{ height: "100%", width: `${pct}%`, background: c.color, transition: "width 0.5s" }} />
+                </div>
+              </div>;
+            })}
           </div>;
         })()}
       </div>
@@ -888,43 +934,47 @@ export default function App() {
             <button style={s.btnOutline} onClick={addPhase}>+ Add Phase</button>
           </div>
         </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: "12px", marginTop: "10px" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginTop: "10px" }}>
           {data.phases.map(p => {
             const prog = pct(p.current, p.target); const isA = p.status === "active"; const isD = p.status === "complete";
+            const statusColor = isD ? colors.green : isA ? colors.accent : colors.textMuted;
+            const statusLabel = isD ? "DONE" : isA ? "ACTIVE" : "LOCKED";
             return (
-              <div key={p.id} style={{ padding: "12px", borderRadius: "8px", background: isA ? colors.greenBg : isD ? `${colors.green}08` : colors.cardAlt, border: isA ? `1px solid ${colors.green}30` : `1px solid ${colors.border}` }}>
-                <div style={s.flex}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                    <span style={s.badge(isD ? "green" : isA ? "yellow" : "red")}>{isD ? "✓ Done" : isA ? "Active" : "Locked"}</span>
-                    <span style={{ fontSize: "11px", color: colors.textMuted }}>Phase {p.id}:</span>
-                    <ECell value={p.name} onChange={v => updatePhase(p.id, "name", v)} style={{ fontSize: "13px", fontWeight: 600 }} />
+              <div key={p.id} style={{ padding: "12px", background: colors.cardAlt, border: `1px solid ${colors.border}` }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "8px" }}>
+                  <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "11px" }}>
+                    <span style={{ color: colors.textDim }}>P{p.id} · </span>
+                    <ECell value={p.name} onChange={v => updatePhase(p.id, "name", v)} style={{ fontSize: "12px", fontWeight: 500, color: colors.text }} />
                   </div>
-                  <div style={s.flexG}>
-                    {p.target > 0 && <span style={{ fontSize: "12px", color: colors.textDim }}>
-                      <ECell value={p.current} type="number" onChange={v => updatePhase(p.id, "current", v)} /> / <ECell value={p.target} type="number" onChange={v => updatePhase(p.id, "target", v)} style={{ color: colors.textDim }} /> {p.currency}
-                    </span>}
-                    {p.target === 0 && <span style={{ fontSize: "11px", color: colors.textMuted }}>Target: <ECell value={p.target} type="number" onChange={v => updatePhase(p.id, "target", v)} /></span>}
-                    {p.status !== "active" && <button style={s.btnDanger} onClick={() => { if (confirm(`Delete Phase ${p.id}?`)) removePhase(p.id); }}>×</button>}
+                  <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "9px", letterSpacing: "0.14em", color: statusColor }}>{statusLabel}</span>
+                </div>
+                {p.target > 0 && <>
+                  <div style={{ height: "6px", background: "#000", overflow: "hidden", marginBottom: "6px" }}>
+                    <div style={{ height: "100%", background: statusColor, width: `${Math.min(100, prog)}%`, transition: "width 0.5s" }} />
                   </div>
-                </div>
-                {p.target > 0 && <div style={{ marginTop: "8px" }}><div style={s.progressBar}><div style={s.progressFill(prog)} /></div><div style={{ fontSize: "10px", color: colors.textDim, marginTop: "4px", display: "flex", justifyContent: "space-between" }}><span>{prog.toFixed(1)}%</span>{p.targetDate && <span>Target: {new Date(p.targetDate).toLocaleDateString("en-GB", { month: "short", year: "numeric" })}</span>}</div></div>}
-                {/* Target Date */}
-                <div style={{ marginTop: "6px", fontSize: "10px", color: colors.textMuted, display: "flex", alignItems: "center", gap: "6px" }}>
-                  <span>Target date:</span>
-                  <input type="date" style={{ ...s.input, padding: "2px 6px", fontSize: "10px", width: "130px" }} value={p.targetDate || ""} onChange={e => updatePhase(p.id, "targetDate", e.target.value)} />
-                </div>
-                {/* Milestones */}
-                <div style={{ marginTop: "8px", display: "flex", gap: "6px", flexWrap: "wrap", alignItems: "center" }}>
-                  {(p.milestones || []).map((m, i) => (
-                    <div key={i} style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "10px", padding: "3px 8px", borderRadius: "4px", background: p.current >= m.amount ? colors.greenBg : colors.cardAlt, color: p.current >= m.amount ? colors.green : colors.textDim }}>
-                      {p.current >= m.amount ? "✓" : "○"}
-                      <ECell value={m.amount} type="number" onChange={v => updateMilestone(p.id, i, "amount", v)} style={{ fontSize: "10px" }} />
-                      <span>—</span>
-                      <ECell value={m.name} onChange={v => updateMilestone(p.id, i, "name", v)} style={{ fontSize: "10px" }} />
-                      <button style={{ ...s.btnDanger, padding: "1px 4px", fontSize: "8px" }} onClick={() => removeMilestone(p.id, i)}>×</button>
-                    </div>
-                  ))}
-                  <button style={{ ...s.btnOutline, padding: "2px 8px", fontSize: "9px" }} onClick={() => addMilestone(p.id)}>+ milestone</button>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontFamily: "'IBM Plex Mono', monospace", fontSize: "10px", color: colors.textDim }}>
+                    <span><ECell value={p.current} type="number" onChange={v => updatePhase(p.id, "current", v)} /> / <ECell value={p.target} type="number" onChange={v => updatePhase(p.id, "target", v)} style={{ color: colors.textDim }} /> {p.currency}</span>
+                    <span>{prog.toFixed(0)}%</span>
+                  </div>
+                </>}
+                {p.target === 0 && <div style={{ fontSize: "10px", color: colors.textMuted, fontFamily: "'IBM Plex Mono', monospace" }}>Set target: <ECell value={p.target} type="number" onChange={v => updatePhase(p.id, "target", v)} /></div>}
+                {(p.milestones || []).length > 0 && <div style={{ marginTop: "10px", paddingTop: "8px", borderTop: `1px solid ${colors.border}` }}>
+                  {(p.milestones || []).map((m, i) => {
+                    const done = p.current >= m.amount;
+                    return <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontFamily: "'IBM Plex Mono', monospace", fontSize: "10px", padding: "3px 0", color: done ? colors.green : colors.textDim }}>
+                      <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        {done ? "✓" : "○"} <ECell value={m.name} onChange={v => updateMilestone(p.id, i, "name", v)} style={{ fontSize: "10px" }} />
+                      </span>
+                      <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        <ECell value={m.amount} type="number" onChange={v => updateMilestone(p.id, i, "amount", v)} style={{ fontSize: "10px" }} />
+                        <button style={{ ...s.btnDanger, padding: "1px 5px", fontSize: "9px" }} onClick={() => removeMilestone(p.id, i)}>×</button>
+                      </span>
+                    </div>;
+                  })}
+                </div>}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "8px", paddingTop: "6px", borderTop: `1px dashed ${colors.border}` }}>
+                  <button style={{ ...s.btnOutline, padding: "2px 8px", fontSize: "9px" }} onClick={() => addMilestone(p.id)}>+ MILESTONE</button>
+                  {p.status !== "active" && <button style={s.btnDanger} onClick={() => { if (confirm(`Delete Phase ${p.id}?`)) removePhase(p.id); }}>×</button>}
                 </div>
               </div>
             );
@@ -933,36 +983,6 @@ export default function App() {
       </div>
         </div>{/* end right rail */}
       </div>{/* end two-column grid */}
-
-      {/* Goals Timeline */}
-      <div style={s.card}>
-        <div style={s.flex}>
-          <H2>Goals Timeline</H2>
-          <button style={s.btn} onClick={() => update("goals", [...(data.goals || []), { id: uid(), name: "New Goal", targetDate: "", notes: "" }])}>+ Add Goal</button>
-        </div>
-        {(!data.goals || data.goals.length === 0) ? <div style={{ fontSize: "12px", color: colors.textDim, padding: "12px 0" }}>No goals yet. Add key dates like India move, kid planned, loan payoff.</div> :
-        <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "10px" }}>
-          {(data.goals || []).slice().sort((a, b) => (a.targetDate || "9999").localeCompare(b.targetDate || "9999")).map(g => {
-            const targetMs = g.targetDate ? new Date(g.targetDate).getTime() : 0;
-            const daysAway = targetMs > 0 ? Math.ceil((targetMs - Date.now()) / 86400000) : null;
-            const isPast = daysAway !== null && daysAway < 0;
-            return (
-              <div key={g.id} style={{ display: "flex", alignItems: "center", gap: "12px", padding: "10px 12px", borderRadius: "6px", background: colors.cardAlt, border: `1px solid ${colors.border}`, opacity: isPast ? 0.6 : 1 }}>
-                <div style={{ flex: 1 }}>
-                  <ECell value={g.name} onChange={v => update("goals", data.goals.map(x => x.id === g.id ? { ...x, name: v } : x))} style={{ fontSize: "13px", fontWeight: 600 }} />
-                  {g.notes && <div style={{ fontSize: "10px", color: colors.textDim, marginTop: "2px" }}><ECell value={g.notes} onChange={v => update("goals", data.goals.map(x => x.id === g.id ? { ...x, notes: v } : x))} multiline style={{ fontSize: "10px", color: colors.textDim }} /></div>}
-                </div>
-                <input type="date" style={{ ...s.input, padding: "4px 8px", fontSize: "11px", width: "130px" }} value={g.targetDate || ""} onChange={e => update("goals", data.goals.map(x => x.id === g.id ? { ...x, targetDate: e.target.value } : x))} />
-                {daysAway !== null && <span style={{ fontSize: "10px", color: isPast ? colors.textMuted : daysAway < 90 ? colors.yellow : colors.textDim, minWidth: "70px", textAlign: "right" }}>
-                  {isPast ? "Past" : daysAway < 30 ? `${daysAway}d` : daysAway < 365 ? `${Math.round(daysAway / 30)}mo` : `${(daysAway / 365).toFixed(1)}y`}
-                </span>}
-                {!g.notes && <button style={{ ...s.btnOutline, padding: "2px 6px", fontSize: "9px" }} onClick={() => update("goals", data.goals.map(x => x.id === g.id ? { ...x, notes: "Add note..." } : x))}>+ note</button>}
-                <button style={s.btnDanger} onClick={() => update("goals", data.goals.filter(x => x.id !== g.id))}>×</button>
-              </div>
-            );
-          })}
-        </div>}
-      </div>
 
       {refreshMsg && <div style={{ padding: "8px 14px", background: `${colors.accent}15`, border: `1px solid ${colors.accent}30`, fontSize: "11px", color: colors.accent, letterSpacing: "0.05em" }}>{refreshMsg}</div>}
 
