@@ -1270,7 +1270,7 @@ export default function App() {
 
         {subTab === "eq" && <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
           <div style={s.card}>
-            <H2>Direct Equity</H2>
+            <div style={s.flex}><H2>Direct Equity</H2><button style={s.btn} onClick={() => addItem("equityAccounts", { name: "New Account", currency: "INR", stocks: [] })}>+ ADD ACCOUNT</button></div>
             {(data.priceHistory || []).length >= 2 ? <div style={{ marginTop: "10px" }}>
               <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: h.eqTotal || 0 }))} color="#8b5cf6" />
               {(data.equityAccounts || []).filter(a => a.stocks.some(st => st.quantity > 0)).length > 1 && <div style={{ marginTop: "14px" }}>
@@ -1282,7 +1282,6 @@ export default function App() {
               </div>}
             </div> : <div style={{ padding: "20px 0", fontFamily: "'IBM Plex Mono', monospace", fontSize: "20px", fontWeight: 500 }}>{fmt(calc.eqValue.total)}</div>}
           </div>
-          <div style={s.flex}><span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "10px", color: colors.textDim, letterSpacing: "0.14em", textTransform: "uppercase" }}>Accounts</span><button style={s.btn} onClick={() => addItem("equityAccounts", { name: "New Account", currency: "INR", stocks: [] })}>+ ADD ACCOUNT</button></div>
           {(data.equityAccounts || []).map(acct => {
             const acctCurrency = acct.currency || "INR";
             const acctNativeTotal = acct.stocks.reduce((s, st) => s + st.quantity * st.currentPrice, 0);
@@ -1787,51 +1786,18 @@ export default function App() {
           />}
         </div>
 
-        {/* Assets vs Liabilities Area Chart */}
+        {/* Assets vs Liabilities Chart */}
         {snaps.length >= 2 && <div style={s.card}>
-          <div style={s.flex}>
-            <H2>Assets vs Liabilities</H2>
-            <span style={{ fontSize: "10px", color: colors.textDim, letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'IBM Plex Mono', monospace" }}>
-              Gross Assets · Debt
-            </span>
-          </div>
-          {(() => {
-            const maxVal = Math.max(...sorted.map(s => s.grossAssets || 0));
-            const W = 800, H = 200, padL = 40, padR = 10, padT = 20, padB = 20;
-            const iw = W - padL - padR, ih = H - padT - padB;
-            const x = (i) => padL + (sorted.length <= 1 ? 0 : (i / (sorted.length - 1)) * iw);
-            const y = (v) => padT + ih - (v / maxVal) * ih;
-
-            const grossPath = sorted.map((s, i) => `${i === 0 ? "M" : "L"} ${x(i).toFixed(1)} ${y(s.grossAssets || 0).toFixed(1)}`).join(" ");
-            const grossArea = `${grossPath} L ${x(sorted.length - 1)} ${padT + ih} L ${x(0)} ${padT + ih} Z`;
-
-            const liabPath = sorted.map((s, i) => `${i === 0 ? "M" : "L"} ${x(i).toFixed(1)} ${y(s.liabilities || 0).toFixed(1)}`).join(" ");
-            const liabArea = `${liabPath} L ${x(sorted.length - 1)} ${padT + ih} L ${x(0)} ${padT + ih} Z`;
-
-            // Show first, middle, last dates only to avoid overlap
-            const labelIndices = sorted.length <= 3 ? sorted.map((_, i) => i) : [0, Math.floor(sorted.length / 2), sorted.length - 1];
-
-            return <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" style={{ width: "100%", height: "auto", marginTop: "12px", display: "block" }}>
-              {[0, 0.25, 0.5, 0.75, 1].map((t, i) => {
-                const gy = padT + ih - t * ih;
-                return <g key={i}>
-                  <line x1={padL} x2={W - padR} y1={gy} y2={gy} stroke={colors.gridLine} strokeDasharray={i === 0 ? "0" : "2,4"} />
-                  <text x={padL - 6} y={gy + 3} fontFamily="'IBM Plex Mono',monospace" fontSize="9" fill={colors.textMuted} textAnchor="end">{((maxVal * t) / 1000).toFixed(0)}k</text>
-                </g>;
-              })}
-              <path d={grossArea} fill={colors.green} opacity="0.15" />
-              <path d={grossPath} fill="none" stroke={colors.green} strokeWidth="1.5" />
-              <path d={liabArea} fill={colors.red} opacity="0.15" />
-              <path d={liabPath} fill="none" stroke={colors.red} strokeWidth="1.5" />
-              {labelIndices.map(i => {
-                const date = new Date(sorted[i].date).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
-                return <text key={i} x={x(i)} y={H - 4} fontFamily="'IBM Plex Mono',monospace" fontSize="9" fill={colors.textMuted} textAnchor={i === 0 ? "start" : i === sorted.length - 1 ? "end" : "middle"}>{date}</text>;
-              })}
-            </svg>;
-          })()}
-          <div style={{ display: "flex", gap: "20px", marginTop: "12px", fontFamily: "'IBM Plex Mono', monospace", fontSize: "10px", color: colors.textDim, letterSpacing: "0.1em", textTransform: "uppercase" }}>
-            <span><span style={{ display: "inline-block", width: "10px", height: "10px", background: colors.green, marginRight: "6px", verticalAlign: "middle" }} />Gross Assets</span>
-            <span><span style={{ display: "inline-block", width: "10px", height: "10px", background: colors.red, marginRight: "6px", verticalAlign: "middle" }} />Liabilities</span>
+          <H2>Assets vs Liabilities</H2>
+          <div style={{ marginTop: "10px" }}>
+            <MultiLineChart
+              history={sorted.map(s => ({ date: s.date, items: { gross: s.grossAssets || 0, liab: s.liabilities || 0 } }))}
+              items={[
+                { key: "gross", label: "Gross Assets" },
+                { key: "liab", label: "Liabilities" },
+              ]}
+              customColors={[colors.green, colors.red]}
+            />
           </div>
         </div>}
 

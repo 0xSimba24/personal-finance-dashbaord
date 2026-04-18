@@ -105,9 +105,9 @@ export default function PortfolioChart({ history, title, color = colors.accent, 
   );
 }
 
-export function MultiLineChart({ history, items, title, currency = "EUR", height = 250 }) {
+export function MultiLineChart({ history, items, title, currency = "EUR", height = 250, customColors = null }) {
   const [range, setRange] = useState("ALL");
-  const lineColors = [colors.accent, colors.cyan, colors.magenta, colors.green, colors.violet, colors.red, "#8a9a5b", "#d4a373"];
+  const lineColors = customColors || [colors.accent, colors.cyan, colors.magenta, colors.green, colors.violet, colors.red, "#8a9a5b", "#d4a373"];
 
   const chartData = useMemo(() => {
     if (!history || history.length === 0) return [];
