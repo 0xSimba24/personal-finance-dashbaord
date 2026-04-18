@@ -1,10 +1,11 @@
 import { useState, useMemo } from "react";
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Area, AreaChart } from "recharts";
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Area, AreaChart, CartesianGrid } from "recharts";
 
 const colors = {
-  bg: "#0f1119", card: "#181b27", cardAlt: "#1e2235", border: "#2a2e42",
-  accent: "#22c997", text: "#e2e5f0", textDim: "#8b90a5", textMuted: "#5a5f75",
-  green: "#22c997", red: "#ef4444",
+  bg: "#0a0a0a", card: "#0f0f0f", cardAlt: "#161616", border: "#1f1f1f",
+  accent: "#f5a623", text: "#e8e8e3", textDim: "#8a8a82", textMuted: "#4a4a44",
+  green: "#4ea96a", red: "#e25555", cyan: "#4ec9e6", magenta: "#d67ab5", violet: "#9b7ed6",
+  gridLine: "rgba(245,166,35,0.1)",
 };
 
 const RANGES = [
@@ -15,10 +16,20 @@ const RANGES = [
   { key: "ALL", label: "All", days: 99999 },
 ];
 
+const monoFont = { fontFamily: "'IBM Plex Mono', ui-monospace, monospace" };
+
 const fmt = (n, c = "EUR") => {
   if (c === "INR") return "₹" + Number(n).toLocaleString("en-IN", { maximumFractionDigits: 0 });
   return "€" + Number(n).toLocaleString("en-US", { maximumFractionDigits: 0 });
 };
+
+const rangeBtn = (active) => ({
+  padding: "4px 10px", borderRadius: 0, border: "none", cursor: "pointer",
+  fontSize: "10px", fontWeight: 500, fontFamily: "'IBM Plex Mono', monospace",
+  letterSpacing: "0.1em", textTransform: "uppercase",
+  background: active ? colors.accent : "transparent",
+  color: active ? colors.bg : colors.textDim,
+});
 
 export default function PortfolioChart({ history, title, color = colors.accent, currency = "EUR", height = 200 }) {
   const [range, setRange] = useState("ALL");
@@ -29,7 +40,6 @@ export default function PortfolioChart({ history, title, color = colors.accent, 
     const r = RANGES.find(r => r.key === range);
     const cutoff = Date.now() - (r.days * 24 * 60 * 60 * 1000);
     const filtered = history.filter(h => new Date(h.date).getTime() >= cutoff);
-    // If filtered is too sparse, show all
     const data = filtered.length >= 2 ? filtered : history;
     return data.map(h => ({
       date: new Date(h.date).toLocaleDateString("en-GB", { day: "numeric", month: "short" }),
@@ -40,8 +50,8 @@ export default function PortfolioChart({ history, title, color = colors.accent, 
 
   if (!history || history.length < 2) {
     return (
-      <div style={{ padding: "20px 0", textAlign: "center", fontSize: "12px", color: colors.textDim }}>
-        Need at least 2 data points. Hit "Refresh Prices" on different days to build history.
+      <div style={{ padding: "20px 0", textAlign: "center", fontSize: "10px", color: colors.textDim, letterSpacing: "0.1em", textTransform: "uppercase", ...monoFont }}>
+        Need ≥2 data points · Refresh prices to build history
       </div>
     );
   }
@@ -51,28 +61,23 @@ export default function PortfolioChart({ history, title, color = colors.accent, 
   const change = last - first;
   const changePct = first > 0 ? (change / first) * 100 : 0;
   const isUp = change >= 0;
-  const lineColor = isUp ? colors.green : colors.red;
+  const lineColor = colors.accent;
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px", flexWrap: "wrap", gap: "8px" }}>
         <div>
-          {title && <div style={{ fontSize: "13px", fontWeight: 600, marginBottom: "2px" }}>{title}</div>}
-          <div style={{ display: "flex", alignItems: "baseline", gap: "8px" }}>
-            <span style={{ fontSize: "18px", fontWeight: 700 }}>{fmt(last, currency)}</span>
-            <span style={{ fontSize: "12px", fontWeight: 600, color: isUp ? colors.green : colors.red }}>
-              {isUp ? "+" : ""}{fmt(change, currency)} ({isUp ? "+" : ""}{changePct.toFixed(2)}%)
+          {title && <div style={{ fontSize: "10px", color: colors.text, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: "4px", ...monoFont }}><span style={{ color: colors.accent, marginRight: "6px" }}>&gt;</span>{title}</div>}
+          <div style={{ display: "flex", alignItems: "baseline", gap: "10px" }}>
+            <span style={{ fontSize: "20px", fontWeight: 500, letterSpacing: "-0.01em", ...monoFont }}>{fmt(last, currency)}</span>
+            <span style={{ fontSize: "11px", color: isUp ? colors.green : colors.red, ...monoFont }}>
+              {isUp ? "▲ +" : "▼ "}{fmt(change, currency)} · {isUp ? "+" : ""}{changePct.toFixed(2)}%
             </span>
           </div>
         </div>
-        <div style={{ display: "flex", gap: "4px" }}>
+        <div style={{ display: "flex", gap: "2px" }}>
           {RANGES.map(r => (
-            <button key={r.key} onClick={() => setRange(r.key)} style={{
-              padding: "4px 10px", borderRadius: "4px", border: "none", cursor: "pointer",
-              fontSize: "10px", fontWeight: 600, fontFamily: "inherit",
-              background: range === r.key ? colors.accent : colors.cardAlt,
-              color: range === r.key ? colors.bg : colors.textDim,
-            }}>{r.label}</button>
+            <button key={r.key} onClick={() => setRange(r.key)} style={rangeBtn(range === r.key)}>{r.label}</button>
           ))}
         </div>
       </div>
@@ -80,29 +85,29 @@ export default function PortfolioChart({ history, title, color = colors.accent, 
         <AreaChart data={chartData} margin={{ top: 5, right: 5, bottom: 5, left: 15 }}>
           <defs>
             <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor={lineColor} stopOpacity={0.2} />
+              <stop offset="5%" stopColor={lineColor} stopOpacity={0.18} />
               <stop offset="95%" stopColor={lineColor} stopOpacity={0} />
             </linearGradient>
           </defs>
-          <XAxis dataKey="date" tick={{ fontSize: 9, fill: colors.textMuted }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
-          <YAxis tick={{ fontSize: 9, fill: colors.textMuted }} axisLine={false} tickLine={false} width={55} tickFormatter={v => v >= 1000 ? `${(v/1000).toFixed(0)}k` : v.toFixed(0)} domain={["auto", "auto"]} />
+          <CartesianGrid stroke={colors.gridLine} strokeDasharray="2 4" vertical={false} />
+          <XAxis dataKey="date" tick={{ fontSize: 9, fill: colors.textMuted, fontFamily: "'IBM Plex Mono', monospace" }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+          <YAxis tick={{ fontSize: 9, fill: colors.textMuted, fontFamily: "'IBM Plex Mono', monospace" }} axisLine={false} tickLine={false} width={55} tickFormatter={v => v >= 1000 ? `${(v/1000).toFixed(0)}k` : v.toFixed(0)} domain={["auto", "auto"]} />
           <Tooltip
-            contentStyle={{ background: colors.card, border: `1px solid ${colors.border}`, borderRadius: "6px", fontSize: "11px", fontFamily: "inherit" }}
-            labelStyle={{ color: colors.textDim }}
-            itemStyle={{ color: colors.text }}
-            formatter={(v) => [fmt(v, currency), "Value"]}
+            contentStyle={{ background: "#000", border: `1px solid ${colors.accent}`, borderRadius: 0, fontSize: "11px", fontFamily: "'IBM Plex Mono', monospace", letterSpacing: "0.05em" }}
+            labelStyle={{ color: colors.textDim, textTransform: "uppercase", fontSize: "9px", letterSpacing: "0.14em" }}
+            itemStyle={{ color: colors.accent }}
+            formatter={(v) => [fmt(v, currency), "VALUE"]}
           />
-          <Area type="monotone" dataKey="value" stroke={lineColor} strokeWidth={2} fill={`url(#${gradId})`} dot={false} activeDot={{ r: 4, fill: lineColor }} />
+          <Area type="monotone" dataKey="value" stroke={lineColor} strokeWidth={1.5} fill={`url(#${gradId})`} dot={false} activeDot={{ r: 3, fill: lineColor, stroke: "none" }} />
         </AreaChart>
       </ResponsiveContainer>
     </div>
   );
 }
 
-// Multi-line chart for individual items within a category
 export function MultiLineChart({ history, items, title, currency = "EUR", height = 250 }) {
   const [range, setRange] = useState("ALL");
-  const lineColors = ["#22c997", "#6366f1", "#f59e0b", "#ec4899", "#3b82f6", "#8b5cf6", "#ef4444", "#14b8a6"];
+  const lineColors = [colors.accent, colors.cyan, colors.magenta, colors.green, colors.violet, colors.red, "#8a9a5b", "#d4a373"];
 
   const chartData = useMemo(() => {
     if (!history || history.length === 0) return [];
@@ -121,48 +126,43 @@ export function MultiLineChart({ history, items, title, currency = "EUR", height
 
   if (!history || history.length < 2) {
     return (
-      <div style={{ padding: "20px 0", textAlign: "center", fontSize: "12px", color: colors.textDim }}>
-        Need at least 2 data points. Hit "Refresh Prices" on different days to build history.
+      <div style={{ padding: "20px 0", textAlign: "center", fontSize: "10px", color: colors.textDim, letterSpacing: "0.1em", textTransform: "uppercase", ...monoFont }}>
+        Need ≥2 data points · Refresh prices to build history
       </div>
     );
   }
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
-        {title && <div style={{ fontSize: "13px", fontWeight: 600 }}>{title}</div>}
-        <div style={{ display: "flex", gap: "4px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px", flexWrap: "wrap", gap: "8px" }}>
+        {title && <div style={{ fontSize: "10px", color: colors.text, letterSpacing: "0.14em", textTransform: "uppercase", ...monoFont }}><span style={{ color: colors.accent, marginRight: "6px" }}>&gt;</span>{title}</div>}
+        <div style={{ display: "flex", gap: "2px" }}>
           {RANGES.map(r => (
-            <button key={r.key} onClick={() => setRange(r.key)} style={{
-              padding: "4px 10px", borderRadius: "4px", border: "none", cursor: "pointer",
-              fontSize: "10px", fontWeight: 600, fontFamily: "inherit",
-              background: range === r.key ? colors.accent : colors.cardAlt,
-              color: range === r.key ? colors.bg : colors.textDim,
-            }}>{r.label}</button>
+            <button key={r.key} onClick={() => setRange(r.key)} style={rangeBtn(range === r.key)}>{r.label}</button>
           ))}
         </div>
       </div>
-      {/* Legend */}
-      <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginBottom: "8px" }}>
+      <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginBottom: "10px" }}>
         {items.map((item, i) => (
-          <div key={item.key} style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-            <div style={{ width: "8px", height: "8px", borderRadius: "2px", background: lineColors[i % lineColors.length] }} />
-            <span style={{ fontSize: "10px", color: colors.textDim }}>{item.label}</span>
+          <div key={item.key} style={{ display: "flex", alignItems: "center", gap: "5px" }}>
+            <div style={{ width: "10px", height: "10px", background: lineColors[i % lineColors.length] }} />
+            <span style={{ fontSize: "10px", color: colors.textDim, letterSpacing: "0.05em", ...monoFont }}>{item.label}</span>
           </div>
         ))}
       </div>
       <ResponsiveContainer width="100%" height={height}>
         <LineChart data={chartData} margin={{ top: 5, right: 5, bottom: 5, left: 15 }}>
-          <XAxis dataKey="date" tick={{ fontSize: 9, fill: colors.textMuted }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
-          <YAxis tick={{ fontSize: 9, fill: colors.textMuted }} axisLine={false} tickLine={false} width={55} tickFormatter={v => v >= 1000 ? `${(v/1000).toFixed(0)}k` : v.toFixed(0)} domain={["auto", "auto"]} />
+          <CartesianGrid stroke={colors.gridLine} strokeDasharray="2 4" vertical={false} />
+          <XAxis dataKey="date" tick={{ fontSize: 9, fill: colors.textMuted, fontFamily: "'IBM Plex Mono', monospace" }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+          <YAxis tick={{ fontSize: 9, fill: colors.textMuted, fontFamily: "'IBM Plex Mono', monospace" }} axisLine={false} tickLine={false} width={55} tickFormatter={v => v >= 1000 ? `${(v/1000).toFixed(0)}k` : v.toFixed(0)} domain={["auto", "auto"]} />
           <Tooltip
-            contentStyle={{ background: colors.card, border: `1px solid ${colors.border}`, borderRadius: "6px", fontSize: "11px", fontFamily: "inherit" }}
-            labelStyle={{ color: colors.textDim }}
+            contentStyle={{ background: "#000", border: `1px solid ${colors.accent}`, borderRadius: 0, fontSize: "11px", fontFamily: "'IBM Plex Mono', monospace", letterSpacing: "0.05em" }}
+            labelStyle={{ color: colors.textDim, textTransform: "uppercase", fontSize: "9px", letterSpacing: "0.14em" }}
             itemStyle={{ color: colors.text }}
             formatter={(v, name) => [fmt(v, currency), name]}
           />
           {items.map((item, i) => (
-            <Line key={item.key} type="monotone" dataKey={item.key} name={item.label} stroke={lineColors[i % lineColors.length]} strokeWidth={2} dot={false} activeDot={{ r: 3 }} />
+            <Line key={item.key} type="monotone" dataKey={item.key} name={item.label} stroke={lineColors[i % lineColors.length]} strokeWidth={1.5} dot={false} activeDot={{ r: 3 }} />
           ))}
         </LineChart>
       </ResponsiveContainer>
