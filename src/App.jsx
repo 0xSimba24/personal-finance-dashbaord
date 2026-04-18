@@ -1269,17 +1269,20 @@ export default function App() {
         </div>}
 
         {subTab === "eq" && <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-          {(data.priceHistory || []).length >= 2 && <div style={s.card}>
-            <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: h.eqTotal || 0 }))} color="#8b5cf6" />
-            {(data.equityAccounts || []).filter(a => a.stocks.some(st => st.quantity > 0)).length > 1 && <div style={{ marginTop: "14px" }}>
-              <MultiLineChart
-                history={data.priceHistory}
-                items={(data.equityAccounts || []).filter(a => a.stocks.some(st => st.quantity > 0)).map(a => ({ key: `eqAcct_${a.id}`, label: a.name }))}
-                title="Per Account"
-              />
-            </div>}
-          </div>}
-          <div style={s.flex}><H2>Direct Equity Accounts</H2><button style={s.btn} onClick={() => addItem("equityAccounts", { name: "New Account", currency: "INR", stocks: [] })}>+ Add Account</button></div>
+          <div style={s.card}>
+            <H2>Direct Equity</H2>
+            {(data.priceHistory || []).length >= 2 ? <div style={{ marginTop: "10px" }}>
+              <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: h.eqTotal || 0 }))} color="#8b5cf6" />
+              {(data.equityAccounts || []).filter(a => a.stocks.some(st => st.quantity > 0)).length > 1 && <div style={{ marginTop: "14px" }}>
+                <MultiLineChart
+                  history={data.priceHistory}
+                  items={(data.equityAccounts || []).filter(a => a.stocks.some(st => st.quantity > 0)).map(a => ({ key: `eqAcct_${a.id}`, label: a.name }))}
+                  title="Per Account"
+                />
+              </div>}
+            </div> : <div style={{ padding: "20px 0", fontFamily: "'IBM Plex Mono', monospace", fontSize: "20px", fontWeight: 500 }}>{fmt(calc.eqValue.total)}</div>}
+          </div>
+          <div style={s.flex}><span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "10px", color: colors.textDim, letterSpacing: "0.14em", textTransform: "uppercase" }}>Accounts</span><button style={s.btn} onClick={() => addItem("equityAccounts", { name: "New Account", currency: "INR", stocks: [] })}>+ ADD ACCOUNT</button></div>
           {(data.equityAccounts || []).map(acct => {
             const acctCurrency = acct.currency || "INR";
             const acctNativeTotal = acct.stocks.reduce((s, st) => s + st.quantity * st.currentPrice, 0);
@@ -1808,7 +1811,7 @@ export default function App() {
             // Show first, middle, last dates only to avoid overlap
             const labelIndices = sorted.length <= 3 ? sorted.map((_, i) => i) : [0, Math.floor(sorted.length / 2), sorted.length - 1];
 
-            return <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ width: "100%", height: H, marginTop: "12px", display: "block" }}>
+            return <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" style={{ width: "100%", height: "auto", marginTop: "12px", display: "block" }}>
               {[0, 0.25, 0.5, 0.75, 1].map((t, i) => {
                 const gy = padT + ih - t * ih;
                 return <g key={i}>
