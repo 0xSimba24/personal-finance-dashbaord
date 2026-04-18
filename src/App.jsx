@@ -1070,95 +1070,168 @@ export default function App() {
 
   // ─── INCOME & EXPENSES ───
   const renderIncome = () => {
-    // Build monthly income vs expense data from snapshots (1 per month)
-    const monthlyData = (() => {
-      const byMonth = {};
-      (data.snapshots || []).forEach(snap => {
-        const ym = snap.date?.slice(0, 7);
-        if (!ym) return;
-        // Snapshots don't store income/expense — just use current values as placeholder
-        // Will show current month for now; over time, if we store them per snapshot, chart fills in
-        if (!byMonth[ym] || new Date(snap.date) > new Date(byMonth[ym].date)) {
-          byMonth[ym] = { date: snap.date, income: snap.totalIncome, expenses: snap.totalExpenses };
-        }
-      });
-      return Object.entries(byMonth)
-        .filter(([, v]) => v.income != null)
-        .sort((a, b) => a[0].localeCompare(b[0]))
-        .slice(-12)
-        .map(([ym, v]) => ({ ym, income: v.income, expenses: v.expenses }));
-    })();
+    // Category breakdown
+    const byCategory = {};
+    data.fixedExpenses.forEach(e => {
+      const cat = e.category || autoCategorize(e.name);
+      const eurMo = toEur(e.frequency === "annual" ? e.amount / 12 : e.amount, e.currency, rate, data.settings.eurToUsd || 1.08);
+      byCategory[cat] = (byCategory[cat] || 0) + eurMo;
+    });
+    const categoryList = EXPENSE_CATEGORIES
+      .filter(c => byCategory[c] > 0)
+      .map(c => ({ cat: c, total: byCategory[c], color: CATEGORY_COLORS[c] }))
+      .sort((a, b) => b.total - a.total);
+
+    const now = new Date();
+    const monthLabel = now.toLocaleDateString("en-US", { month: "short", year: "numeric" }).toUpperCase();
 
     return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-      <div style={s.card}>
-        <div style={s.flex}><H2>Income vs Expenses · 12mo</H2><span style={{ fontSize: "10px", color: colors.textDim, letterSpacing: "0.1em", textTransform: "uppercase" }}>{monthlyData.length >= 2 ? `${monthlyData.length} MO` : "FILLS AS SNAPSHOTS ACCUMULATE"}</span></div>
-        {monthlyData.length < 2 ? (
-          <div style={{ padding: "40px 20px", textAlign: "center", color: colors.textMuted, fontSize: "11px", letterSpacing: "0.1em", fontFamily: "'IBM Plex Mono', monospace" }}>
-            CURRENT: IN {fmt(calc.totalIncomeEur)} · EX {fmt(calc.totalFixedEur)} · SURPLUS {fmt(calc.totalIncomeEur - calc.totalFixedEur)}<br/>
-            <span style={{ fontSize: "10px" }}>TAKE A SNAPSHOT EACH MONTH TO BUILD TREND DATA</span>
+    <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 380px", gap: "14px" }} className="overview-grid">
+      {/* LEFT COLUMN */}
+      <div style={{ display: "flex", flexDirection: "column", gap: "14px", minWidth: 0 }}>
+        {/* Income */}
+        <div style={s.card}>
+          <div style={s.flex}>
+            <H2>Income · Monthly</H2>
+            <span style={{ fontSize: "10px", color: colors.textDim, letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'IBM Plex Mono', monospace" }}>
+              {data.income.length} SOURCES · {fmt(calc.totalIncomeEur)}
+            </span>
           </div>
-        ) : (() => {
-          const W = 700, H = 180, padL = 40, padR = 10, padT = 10, padB = 22;
-          const iw = W - padL - padR, ih = H - padT - padB;
-          const max = Math.max(...monthlyData.flatMap(d => [d.income, d.expenses]));
-          const slot = iw / monthlyData.length;
-          const bw = slot * 0.32;
-          return <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ width: "100%", height: H, display: "block", marginTop: "12px" }}>
-            {[0, 0.25, 0.5, 0.75, 1].map((t, i) => {
-              const y = padT + ih - t * ih;
-              return <line key={i} x1={padL} x2={W - padR} y1={y} y2={y} stroke={colors.gridLine} strokeWidth="1" strokeDasharray={i === 0 ? "0" : "2,4"} />;
+          <table style={{ ...s.table, marginTop: "10px" }}>
+            <thead><tr><th style={s.th}>Source</th><th style={s.th}>Freq</th><th style={s.th}>Amount</th><th style={s.th}>Curr</th><th style={{ ...s.th, textAlign: "right" }}>EUR/mo</th><th style={s.th}></th></tr></thead>
+            <tbody>{data.income.map(i => {
+              const eurMo = toEur(i.frequency === "annual" ? i.amount / 12 : i.amount, i.currency, rate);
+              return <tr key={i.id}>
+                <td style={{ ...s.td, color: colors.accent }}><ECell value={i.name} onChange={v => updateItem("income", i.id, "name", v)} /></td>
+                <td style={{ ...s.td, color: colors.textDim, textTransform: "uppercase", fontSize: "10px", letterSpacing: "0.1em" }}><select style={s.select} value={i.frequency} onChange={e => updateItem("income", i.id, "frequency", e.target.value)}><option value="monthly">Monthly</option><option value="annual">Annual</option></select></td>
+                <td style={s.td}><ECell value={i.amount} type="number" onChange={v => updateItem("income", i.id, "amount", v)} /></td>
+                <td style={s.td}><CurrSelect value={i.currency} onChange={v => updateItem("income", i.id, "currency", v)} /></td>
+                <td style={{ ...s.td, textAlign: "right", color: colors.green }}>{fmt(eurMo)}</td>
+                <td style={s.td}><button style={s.btnDanger} onClick={() => removeItem("income", i.id)}>×</button></td>
+              </tr>;
+            })}</tbody>
+          </table>
+          <div style={{ marginTop: "10px", display: "flex", justifyContent: "space-between" }}>
+            <button style={s.btn} onClick={() => addItem("income", { name: "New", amount: 0, currency: "EUR", frequency: "monthly" })}>+ ADD SOURCE</button>
+            <span style={{ fontSize: "11px", color: colors.textDim, fontFamily: "'IBM Plex Mono', monospace", letterSpacing: "0.05em" }}>Total: <span style={{ color: colors.green }}>{fmt(calc.totalIncomeEur)}</span> · {fmt(calc.totalIncomeEur * rate, "INR")}</span>
+          </div>
+        </div>
+
+        {/* Fixed Expenses */}
+        <div style={s.card}>
+          <div style={s.flex}>
+            <H2>Fixed Expenses</H2>
+            <span style={{ fontSize: "10px", color: colors.textDim, letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'IBM Plex Mono', monospace" }}>
+              {data.fixedExpenses.length} LINES · {fmt(calc.totalFixedEur)} / MO
+            </span>
+          </div>
+          <table style={{ ...s.table, marginTop: "10px" }}>
+            <thead><tr><th style={s.th}>Line</th><th style={s.th}>Category</th><th style={s.th}>Amount</th><th style={s.th}>Curr</th><th style={s.th}>Freq</th><th style={{ ...s.th, textAlign: "right" }}>EUR/mo</th><th style={{ ...s.th, textAlign: "right" }}>% Exp</th><th style={s.th}></th></tr></thead>
+            <tbody>{data.fixedExpenses.map(e => {
+              const cat = e.category || autoCategorize(e.name);
+              const color = CATEGORY_COLORS[cat] || colors.textDim;
+              const eurMo = toEur(e.frequency === "annual" ? e.amount / 12 : e.amount, e.currency, rate);
+              const catPct = calc.totalFixedEur > 0 ? (eurMo / calc.totalFixedEur) * 100 : 0;
+              return <tr key={e.id}>
+                <td style={s.td}><ECell value={e.name} onChange={v => updateItem("fixedExpenses", e.id, "name", v)} /></td>
+                <td style={s.td}>
+                  <span style={{ display: "inline-block", width: "8px", height: "8px", background: color, marginRight: "6px", verticalAlign: "middle" }} />
+                  <select style={{ ...s.select, color: colors.textDim }} value={cat} onChange={ev => updateItem("fixedExpenses", e.id, "category", ev.target.value)}>{EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}</select>
+                </td>
+                <td style={s.td}><ECell value={e.amount} type="number" onChange={v => updateItem("fixedExpenses", e.id, "amount", v)} /></td>
+                <td style={s.td}><CurrSelect value={e.currency} onChange={v => updateItem("fixedExpenses", e.id, "currency", v)} /></td>
+                <td style={s.td}><select style={s.select} value={e.frequency} onChange={ev => updateItem("fixedExpenses", e.id, "frequency", ev.target.value)}><option value="monthly">Monthly</option><option value="annual">Annual</option></select></td>
+                <td style={{ ...s.td, textAlign: "right" }}>{fmt(eurMo)}</td>
+                <td style={{ ...s.td, textAlign: "right", color: colors.textDim, fontSize: "11px" }}>{catPct.toFixed(1)}%</td>
+                <td style={s.td}><button style={s.btnDanger} onClick={() => removeItem("fixedExpenses", e.id)}>×</button></td>
+              </tr>;
+            })}</tbody>
+          </table>
+          <div style={{ marginTop: "10px", display: "flex", justifyContent: "space-between" }}>
+            <button style={s.btn} onClick={() => addItem("fixedExpenses", { name: "New", amount: 0, currency: "EUR", frequency: "monthly", category: "Other" })}>+ ADD EXPENSE</button>
+            <span style={{ fontSize: "11px", color: colors.textDim, fontFamily: "'IBM Plex Mono', monospace", letterSpacing: "0.05em" }}>Total: <span style={{ color: colors.red }}>{fmt(calc.totalFixedEur)}</span> · {fmt(calc.totalFixedEur * rate, "INR")}</span>
+          </div>
+        </div>
+
+        {/* Cash Flow 12mo Placeholder */}
+        <div style={s.card}>
+          <div style={s.flex}>
+            <H2>Cash Flow · 12mo</H2>
+            <span style={{ fontSize: "10px", color: colors.textDim, letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'IBM Plex Mono', monospace" }}>
+              Fills as snapshots accumulate
+            </span>
+          </div>
+          <div style={{ padding: "40px 20px", textAlign: "center", color: colors.textMuted, fontSize: "10px", letterSpacing: "0.1em", fontFamily: "'IBM Plex Mono', monospace", textTransform: "uppercase" }}>
+            Take a monthly snapshot to build the trend<br/>
+            <span style={{ fontSize: "9px", marginTop: "8px", display: "inline-block" }}>Current · IN {fmt(calc.totalIncomeEur)} · EX {fmt(calc.totalFixedEur)} · SURPLUS {fmt(calc.totalIncomeEur - calc.totalFixedEur)}</span>
+          </div>
+        </div>
+
+        {/* One-off Expenses */}
+        <div style={s.card}>
+          <div style={s.flex}>
+            <H2>One-off Expenses</H2>
+            <button style={s.btn} onClick={() => addItem("oneOffExpenses", { name: "Expense", amount: 0, currency: "EUR", date: new Date().toISOString().slice(0, 10) })}>+ ADD</button>
+          </div>
+          {data.oneOffExpenses.length === 0 ? <div style={{ fontSize: "10px", color: colors.textMuted, padding: "16px 0", textAlign: "center", letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'IBM Plex Mono', monospace" }}>No one-off expenses</div> :
+          <table style={{ ...s.table, marginTop: "10px" }}><thead><tr><th style={s.th}>Item</th><th style={s.th}>Amount</th><th style={s.th}>Curr</th><th style={s.th}>Date</th><th style={s.th}></th></tr></thead>
+          <tbody>{data.oneOffExpenses.map(e => <tr key={e.id}><td style={s.td}><ECell value={e.name} onChange={v => updateItem("oneOffExpenses", e.id, "name", v)} /></td><td style={s.td}><ECell value={e.amount} type="number" onChange={v => updateItem("oneOffExpenses", e.id, "amount", v)} /></td><td style={s.td}><CurrSelect value={e.currency} onChange={v => updateItem("oneOffExpenses", e.id, "currency", v)} /></td><td style={s.td}><input type="date" style={s.input} value={e.date} onChange={ev => updateItem("oneOffExpenses", e.id, "date", ev.target.value)} /></td><td style={s.td}><button style={s.btnDanger} onClick={() => removeItem("oneOffExpenses", e.id)}>×</button></td></tr>)}</tbody></table>}
+        </div>
+      </div>
+
+      {/* RIGHT RAIL */}
+      <div style={{ display: "flex", flexDirection: "column", gap: "14px", minWidth: 0 }}>
+        {/* By Category */}
+        <div style={s.card}>
+          <div style={s.flex}>
+            <H2>By Category</H2>
+            <span style={{ fontSize: "10px", color: colors.textDim, fontFamily: "'IBM Plex Mono', monospace", letterSpacing: "0.05em" }}>{fmt(calc.totalFixedEur)}</span>
+          </div>
+          <div style={{ marginTop: "12px" }}>
+            {categoryList.length === 0 ? <div style={{ fontSize: "10px", color: colors.textMuted, padding: "16px 0", textAlign: "center", letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'IBM Plex Mono', monospace" }}>No expenses yet</div> :
+            categoryList.map(c => {
+              const catPct = calc.totalFixedEur > 0 ? (c.total / calc.totalFixedEur) * 100 : 0;
+              return <div key={c.cat} style={{ marginBottom: "14px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontFamily: "'IBM Plex Mono', monospace", fontSize: "11px", marginBottom: "6px" }}>
+                  <span style={{ textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                    <span style={{ display: "inline-block", width: "8px", height: "8px", background: c.color, marginRight: "6px", verticalAlign: "middle" }} />
+                    {c.cat}
+                  </span>
+                  <span style={{ color: colors.textDim }}>{fmt(c.total)} · {catPct.toFixed(1)}%</span>
+                </div>
+                <div style={{ height: "6px", background: colors.cardAlt, overflow: "hidden" }}>
+                  <div style={{ height: "100%", width: `${catPct}%`, background: c.color, transition: "width 0.5s" }} />
+                </div>
+              </div>;
             })}
-            {monthlyData.map((d, i) => {
-              const cx = padL + slot * (i + 0.5);
-              const hi = (d.income / max) * ih;
-              const he = (d.expenses / max) * ih;
-              const monthLabel = new Date(d.ym + "-01").toLocaleDateString("en-US", { month: "short" }).charAt(0);
-              return <g key={i}>
-                <rect x={cx - bw - 1} y={padT + ih - hi} width={bw} height={hi} fill={colors.cyan} />
-                <rect x={cx + 1} y={padT + ih - he} width={bw} height={he} fill={colors.red} />
-                <text x={cx} y={H - 6} fontFamily="'IBM Plex Mono',monospace" fontSize="9" fill={colors.textDim} textAnchor="middle">{monthLabel}</text>
-              </g>;
-            })}
-          </svg>;
-        })()}
-        {monthlyData.length >= 2 && <div style={{ display: "flex", gap: "20px", marginTop: "12px", fontFamily: "'IBM Plex Mono', monospace", fontSize: "10px", color: colors.textDim, letterSpacing: "0.1em", textTransform: "uppercase" }}>
-          <span><span style={{ display: "inline-block", width: "10px", height: "10px", background: colors.cyan, marginRight: "6px", verticalAlign: "middle" }} />Income</span>
-          <span><span style={{ display: "inline-block", width: "10px", height: "10px", background: colors.red, marginRight: "6px", verticalAlign: "middle" }} />Expenses</span>
-        </div>}
-      </div>
-      <div style={s.card}>
-        <div style={s.flex}><H2>Income</H2><button style={s.btn} onClick={() => addItem("income", { name: "New", amount: 0, currency: "EUR", frequency: "monthly" })}>+ Add</button></div>
-        <table style={s.table}><thead><tr><th style={s.th}>Source</th><th style={s.th}>Amount</th><th style={s.th}>Curr</th><th style={s.th}>Freq</th><th style={s.th}>EUR/mo</th><th style={s.th}></th></tr></thead>
-        <tbody>{data.income.map(i => <tr key={i.id}><td style={s.td}><ECell value={i.name} onChange={v => updateItem("income", i.id, "name", v)} /></td><td style={s.td}><ECell value={i.amount} type="number" onChange={v => updateItem("income", i.id, "amount", v)} /></td><td style={s.td}><CurrSelect value={i.currency} onChange={v => updateItem("income", i.id, "currency", v)} /></td><td style={s.td}><select style={s.select} value={i.frequency} onChange={e => updateItem("income", i.id, "frequency", e.target.value)}><option value="monthly">Monthly</option><option value="annual">Annual</option></select></td><td style={s.td}>{fmt(toEur(i.frequency === "annual" ? i.amount / 12 : i.amount, i.currency, rate))}</td><td style={s.td}><button style={s.btnDanger} onClick={() => removeItem("income", i.id)}>×</button></td></tr>)}</tbody></table>
-        <div style={{ marginTop: "8px", fontSize: "13px", fontWeight: 600, textAlign: "right" }}>Total: {fmtBoth(calc.totalIncomeEur, rate)}/mo</div>
-      </div>
-      <div style={s.card}>
-        <div style={s.flex}><H2>Fixed Expenses</H2><button style={s.btn} onClick={() => addItem("fixedExpenses", { name: "New", amount: 0, currency: "EUR", frequency: "monthly", category: "Other" })}>+ Add</button></div>
-        {(() => {
-          const byCategory = {};
-          data.fixedExpenses.forEach(e => {
-            const cat = e.category || autoCategorize(e.name);
-            const eurMo = toEur(e.frequency === "annual" ? e.amount / 12 : e.amount, e.currency, rate, data.settings.eurToUsd || 1.08);
-            byCategory[cat] = (byCategory[cat] || 0) + eurMo;
-          });
-          const segments = EXPENSE_CATEGORIES
-            .filter(c => byCategory[c] > 0)
-            .map(c => ({ label: c, value: byCategory[c], color: CATEGORY_COLORS[c] }));
-          if (segments.length === 0) return null;
-          return <div style={{ marginBottom: "16px", padding: "12px", background: colors.bg, borderRadius: "8px" }}>
-            <DonutChart title="By Category" segments={segments} currency="EUR" size={140} />
-          </div>;
-        })()}
-        <table style={s.table}><thead><tr><th style={s.th}>Item</th><th style={s.th}>Category</th><th style={s.th}>Amount</th><th style={s.th}>Curr</th><th style={s.th}>Freq</th><th style={s.th}>EUR/mo</th><th style={s.th}></th></tr></thead>
-        <tbody>{data.fixedExpenses.map(e => <tr key={e.id}><td style={s.td}><ECell value={e.name} onChange={v => updateItem("fixedExpenses", e.id, "name", v)} /></td><td style={s.td}><select style={s.select} value={e.category || autoCategorize(e.name)} onChange={ev => updateItem("fixedExpenses", e.id, "category", ev.target.value)}>{EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}</select></td><td style={s.td}><ECell value={e.amount} type="number" onChange={v => updateItem("fixedExpenses", e.id, "amount", v)} /></td><td style={s.td}><CurrSelect value={e.currency} onChange={v => updateItem("fixedExpenses", e.id, "currency", v)} /></td><td style={s.td}><select style={s.select} value={e.frequency} onChange={ev => updateItem("fixedExpenses", e.id, "frequency", ev.target.value)}><option value="monthly">Monthly</option><option value="annual">Annual</option></select></td><td style={s.td}>{fmt(toEur(e.frequency === "annual" ? e.amount / 12 : e.amount, e.currency, rate))}</td><td style={s.td}><button style={s.btnDanger} onClick={() => removeItem("fixedExpenses", e.id)}>×</button></td></tr>)}</tbody></table>
-        <div style={{ marginTop: "8px", fontSize: "13px", fontWeight: 600, textAlign: "right" }}>Total: {fmtBoth(calc.totalFixedEur, rate)}/mo</div>
-      </div>
-      <div style={s.card}>
-        <div style={s.flex}><H2>One-off Expenses</H2><button style={s.btn} onClick={() => addItem("oneOffExpenses", { name: "Expense", amount: 0, currency: "EUR", date: new Date().toISOString().slice(0, 10) })}>+ Add</button></div>
-        {data.oneOffExpenses.length === 0 ? <div style={{ fontSize: "12px", color: colors.textDim, padding: "12px 0" }}>No one-off expenses</div> :
-        <table style={s.table}><thead><tr><th style={s.th}>Item</th><th style={s.th}>Amount</th><th style={s.th}>Curr</th><th style={s.th}>Date</th><th style={s.th}></th></tr></thead>
-        <tbody>{data.oneOffExpenses.map(e => <tr key={e.id}><td style={s.td}><ECell value={e.name} onChange={v => updateItem("oneOffExpenses", e.id, "name", v)} /></td><td style={s.td}><ECell value={e.amount} type="number" onChange={v => updateItem("oneOffExpenses", e.id, "amount", v)} /></td><td style={s.td}><CurrSelect value={e.currency} onChange={v => updateItem("oneOffExpenses", e.id, "currency", v)} /></td><td style={s.td}><input type="date" style={s.input} value={e.date} onChange={ev => updateItem("oneOffExpenses", e.id, "date", ev.target.value)} /></td><td style={s.td}><button style={s.btnDanger} onClick={() => removeItem("oneOffExpenses", e.id)}>×</button></td></tr>)}</tbody></table>}
+          </div>
+        </div>
+
+        {/* Month Summary */}
+        <div style={s.card}>
+          <div style={s.flex}>
+            <H2>Month Summary</H2>
+            <span style={{ fontSize: "10px", color: colors.textDim, fontFamily: "'IBM Plex Mono', monospace", letterSpacing: "0.1em" }}>{monthLabel}</span>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", fontFamily: "'IBM Plex Mono', monospace", fontSize: "13px", marginTop: "10px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: `1px solid ${colors.gridLine}` }}>
+              <span style={{ color: colors.textDim, textTransform: "uppercase", letterSpacing: "0.1em", fontSize: "10px" }}>Income</span>
+              <span style={{ color: colors.green }}>{fmt(calc.totalIncomeEur)}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: `1px solid ${colors.gridLine}` }}>
+              <span style={{ color: colors.textDim, textTransform: "uppercase", letterSpacing: "0.1em", fontSize: "10px" }}>− Expenses</span>
+              <span style={{ color: colors.red }}>{fmt(calc.totalFixedEur)}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: `1px solid ${colors.gridLine}` }}>
+              <span style={{ color: colors.textDim, textTransform: "uppercase", letterSpacing: "0.1em", fontSize: "10px" }}>− SIPs</span>
+              <span style={{ color: colors.red }}>{fmt(calc.totalSipsEur)}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", fontSize: "16px" }}>
+              <span style={{ color: colors.text, textTransform: "uppercase", letterSpacing: "0.14em", fontSize: "11px", fontWeight: 500 }}>= Surplus</span>
+              <span style={{ color: colors.accent, fontWeight: 500 }}>{fmt(calc.surplus)}</span>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
     );
