@@ -386,7 +386,14 @@ export default function App() {
     const totalIncomeEur = data.income.reduce((s, i) => s + eur(i.frequency === "annual" ? i.amount / 12 : i.amount, i.currency), 0);
     const totalFixedEur = data.fixedExpenses.reduce((s, e) => s + eur(e.frequency === "annual" ? e.amount / 12 : e.amount, e.currency), 0);
     const totalSipsEur = data.sips.reduce((s, i) => s + eur(i.amount, i.currency), 0);
-    const surplus = totalIncomeEur - totalFixedEur - totalSipsEur;
+    // One-off expenses: all-time total + current month total
+    const nowYM = new Date().toISOString().slice(0, 7);
+    const totalOneOffEur = (data.oneOffExpenses || []).reduce((s, e) => s + eur(e.amount || 0, e.currency), 0);
+    const thisMonthOneOffEur = (data.oneOffExpenses || [])
+      .filter(e => (e.date || "").slice(0, 7) === nowYM)
+      .reduce((s, e) => s + eur(e.amount || 0, e.currency), 0);
+    // Surplus now subtracts this month's one-offs too
+    const surplus = totalIncomeEur - totalFixedEur - totalSipsEur - thisMonthOneOffEur;
     const totalAllocEur = data.surplusAllocation.filter(a => a.phase === data.settings.currentPhase).reduce((s, a) => s + eur(a.amount, a.currency), 0);
     const unallocated = surplus - totalAllocEur;
 
@@ -426,7 +433,7 @@ export default function App() {
     const liquidNW = liquidAssets;
     const illiquidNW = illiquidAssets;
 
-    return { rate, totalIncomeEur, totalFixedEur, totalSipsEur, surplus, totalAllocEur, unallocated, mfValue, eqValue, cashValue, cryptoValue, propValue, esopValue, grossAssets, liquidAssets, illiquidAssets, totalLiabEur, netWorth, liquidNW, illiquidNW };
+    return { rate, totalIncomeEur, totalFixedEur, totalSipsEur, totalOneOffEur, thisMonthOneOffEur, surplus, totalAllocEur, unallocated, mfValue, eqValue, cashValue, cryptoValue, propValue, esopValue, grossAssets, liquidAssets, illiquidAssets, totalLiabEur, netWorth, liquidNW, illiquidNW };
   }, [data]);
 
   const takeSnapshot = useCallback(() => {
@@ -705,7 +712,7 @@ export default function App() {
         <div style={{ background: colors.card, padding: "14px 16px" }}>
           <div style={s.h3}>Surplus · {calc.totalIncomeEur > 0 ? ((calc.surplus / calc.totalIncomeEur) * 100).toFixed(0) : 0}%</div>
           <div style={{ ...s.bigNum, color: colors.accent }}>{fmt(calc.surplus)}</div>
-          <div style={{ fontSize: "9px", color: colors.textMuted, marginTop: "2px", fontFamily: "'IBM Plex Mono', monospace" }}>IN {fmt(calc.totalIncomeEur)} · EX {fmt(calc.totalFixedEur)} · SIP {fmt(calc.totalSipsEur)}</div>
+          <div style={{ fontSize: "9px", color: colors.textMuted, marginTop: "2px", fontFamily: "'IBM Plex Mono', monospace" }}>IN {fmt(calc.totalIncomeEur)} · EX {fmt(calc.totalFixedEur)} · SIP {fmt(calc.totalSipsEur)}{calc.thisMonthOneOffEur > 0 ? ` · 1-OFF ${fmt(calc.thisMonthOneOffEur)}` : ""}</div>
         </div>
       </div>
 
@@ -1158,7 +1165,12 @@ export default function App() {
         <div style={s.card}>
           <div style={s.flex}>
             <H2>One-off Expenses</H2>
-            <button style={s.btn} onClick={() => addItem("oneOffExpenses", { name: "Expense", amount: 0, currency: "EUR", date: new Date().toISOString().slice(0, 10) })}>+ ADD</button>
+            <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+              {data.oneOffExpenses.length > 0 && <span style={{ fontSize: "10px", color: colors.textDim, letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'IBM Plex Mono', monospace" }}>
+                This Month: <span style={{ color: colors.red }}>{fmt(calc.thisMonthOneOffEur)}</span> · Total: <span style={{ color: colors.text }}>{fmt(calc.totalOneOffEur)}</span>
+              </span>}
+              <button style={s.btn} onClick={() => addItem("oneOffExpenses", { name: "Expense", amount: 0, currency: "EUR", date: new Date().toISOString().slice(0, 10) })}>+ ADD</button>
+            </div>
           </div>
           {data.oneOffExpenses.length === 0 ? <div style={{ fontSize: "10px", color: colors.textMuted, padding: "16px 0", textAlign: "center", letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'IBM Plex Mono', monospace" }}>No one-off expenses</div> :
           <table style={{ ...s.table, marginTop: "10px" }}><thead><tr><th style={s.th}>Item</th><th style={s.th}>Amount</th><th style={s.th}>Curr</th><th style={s.th}>Date</th><th style={s.th}></th></tr></thead>
@@ -1227,6 +1239,10 @@ export default function App() {
               <span style={{ color: colors.textDim, textTransform: "uppercase", letterSpacing: "0.1em", fontSize: "10px" }}>− SIPs</span>
               <span style={{ color: colors.red }}>{fmt(calc.totalSipsEur)}</span>
             </div>
+            {calc.thisMonthOneOffEur > 0 && <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: `1px solid ${colors.gridLine}` }}>
+              <span style={{ color: colors.textDim, textTransform: "uppercase", letterSpacing: "0.1em", fontSize: "10px" }}>− One-offs (this month)</span>
+              <span style={{ color: colors.red }}>{fmt(calc.thisMonthOneOffEur)}</span>
+            </div>}
             <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", fontSize: "16px" }}>
               <span style={{ color: colors.text, textTransform: "uppercase", letterSpacing: "0.14em", fontSize: "11px", fontWeight: 500 }}>= Surplus</span>
               <span style={{ color: colors.accent, fontWeight: 500 }}>{fmt(calc.surplus)}</span>
@@ -1579,6 +1595,10 @@ export default function App() {
               <span style={{ color: colors.textDim, textTransform: "uppercase", letterSpacing: "0.1em", fontSize: "10px" }}>− SIPs</span>
               <span style={{ color: colors.red }}>{fmt(calc.totalSipsEur)}</span>
             </div>
+            {calc.thisMonthOneOffEur > 0 && <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0" }}>
+              <span style={{ color: colors.textDim, textTransform: "uppercase", letterSpacing: "0.1em", fontSize: "10px" }}>− One-offs</span>
+              <span style={{ color: colors.red }}>{fmt(calc.thisMonthOneOffEur)}</span>
+            </div>}
             <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderTop: `1px solid ${colors.border}`, marginTop: "4px" }}>
               <span style={{ color: colors.textDim, textTransform: "uppercase", letterSpacing: "0.1em", fontSize: "10px" }}>= Surplus</span>
               <span>{fmt(calc.surplus)}</span>
