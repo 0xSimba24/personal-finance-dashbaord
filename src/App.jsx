@@ -137,6 +137,53 @@ const getMonthsElapsed = (startDate) => {
   return now.getDate() >= start.getDate() ? Math.max(0, months) : Math.max(0, months - 1);
 };
 
+// Project next N months of principal vs interest split per loan.
+// Starts from the current remaining balance as of the given "monthsElapsed".
+// Returns array of {month: "YYYY-MM", principal, interest, balance}
+const projectAmortization = (principal, annualRate, tenureMonths, monthsElapsed, specialPaymentsTotal = 0, manualEMI = 0, balloonAmount = 0, nMonths = 12) => {
+  if (!principal || !tenureMonths || tenureMonths <= 0) return [];
+  const r = annualRate / 100 / 12;
+  const n = tenureMonths;
+  const k = Math.min(Math.max(0, monthsElapsed), n);
+
+  // Compute remaining principal today
+  let rp;
+  let emi;
+  if (manualEMI > 0) {
+    emi = manualEMI;
+    rp = Math.max(0, principal - (emi * k) - specialPaymentsTotal);
+  } else if (r === 0) {
+    emi = principal / n;
+    rp = Math.max(0, principal - (emi * k) - specialPaymentsTotal);
+  } else {
+    emi = principal * r * Math.pow(1 + r, n) / (Math.pow(1 + r, n) - 1);
+    const rpBeforeSpecial = principal * (Math.pow(1 + r, n) - Math.pow(1 + r, k)) / (Math.pow(1 + r, n) - 1);
+    rp = Math.max(0, rpBeforeSpecial - specialPaymentsTotal);
+  }
+
+  const result = [];
+  const monthsLeftTotal = Math.max(0, n - k);
+  const monthsToProject = Math.min(nMonths, monthsLeftTotal);
+  const today = new Date();
+  let balance = rp;
+
+  for (let i = 0; i < monthsToProject; i++) {
+    const interestPortion = r > 0 ? balance * r : 0;
+    let principalPortion = emi - interestPortion;
+    // Last scheduled payment may be smaller if balloon is at end
+    if (i === monthsToProject - 1 && balloonAmount > 0 && monthsToProject === monthsLeftTotal) {
+      // The final payment normally includes balloon — but we're showing regular payments in the chart.
+      // Don't adjust; balloon shown separately in loan card.
+    }
+    if (principalPortion > balance) principalPortion = balance;
+    balance = Math.max(0, balance - principalPortion);
+    const d = new Date(today.getFullYear(), today.getMonth() + i, 1);
+    const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    result.push({ month: ym, principal: principalPortion, interest: interestPortion, balance });
+  }
+  return result;
+};
+
 const colors = {
   bg: "#0a0a0a", card: "#0f0f0f", cardAlt: "#161616", border: "#1f1f1f", borderBright: "#2a2a2a",
   gridLine: "#141414",
@@ -1875,6 +1922,75 @@ export default function App() {
           })}
         </div>}
       </div>
+
+      {/* Amortization · Next 12 Months Chart */}
+      {data.liabilities.length > 0 && (() => {
+        // Aggregate principal vs interest across all loans for next 12 months, in EUR
+        const monthly = {};
+        const activeLoans = data.liabilities.filter(l => l.totalAmount > 0 && l.tenureMonths > 0 && (l.interestRate > 0 || l.manualEMI > 0));
+        activeLoans.forEach(l => {
+          const elapsed = getMonthsElapsed(l.startDate);
+          const spTotal = (l.specialPayments || []).reduce((s, p) => s + (p.amount || 0), 0);
+          const schedule = projectAmortization(l.totalAmount, l.interestRate, l.tenureMonths, elapsed, spTotal, l.manualEMI || 0, l.balloonAmount || 0, 12);
+          schedule.forEach(row => {
+            const pEur = toEur(row.principal, l.currency, rate, data.settings.eurToUsd || 1.08);
+            const iEur = toEur(row.interest, l.currency, rate, data.settings.eurToUsd || 1.08);
+            if (!monthly[row.month]) monthly[row.month] = { month: row.month, principal: 0, interest: 0 };
+            monthly[row.month].principal += pEur;
+            monthly[row.month].interest += iEur;
+          });
+        });
+        const rows = Object.values(monthly).sort((a, b) => a.month.localeCompare(b.month));
+        if (rows.length === 0) return null;
+
+        const totalPrin = rows.reduce((s, r) => s + r.principal, 0);
+        const totalInt = rows.reduce((s, r) => s + r.interest, 0);
+
+        const W = 800, H = 200, padL = 40, padR = 10, padT = 20, padB = 30;
+        const iw = W - padL - padR, ih = H - padT - padB;
+        const max = Math.max(...rows.map(r => r.principal + r.interest));
+        const niceMax = max > 0 ? Math.ceil(max / 100) * 100 : 100;
+        const slot = iw / rows.length;
+        const bw = slot * 0.32;
+
+        return (
+          <div style={s.card}>
+            <div style={s.flex}>
+              <H2>Amortization · Next 12 Months</H2>
+              <span style={{ fontSize: "10px", color: colors.textDim, letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'IBM Plex Mono', monospace" }}>
+                Principal · Interest
+              </span>
+            </div>
+            <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" style={{ width: "100%", height: "auto", marginTop: "12px", display: "block" }}>
+              {[0, 0.25, 0.5, 0.75, 1].map((t, i) => {
+                const gy = padT + ih - t * ih;
+                return <g key={i}>
+                  <line x1={padL} x2={W - padR} y1={gy} y2={gy} stroke={colors.gridLine} strokeDasharray={i === 0 ? "0" : "2,4"} />
+                  <text x={padL - 6} y={gy + 3} fontFamily="'IBM Plex Mono',monospace" fontSize="9" fill={colors.textMuted} textAnchor="end">{niceMax * t >= 1000 ? `${((niceMax * t) / 1000).toFixed(1)}k` : (niceMax * t).toFixed(0)}</text>
+                </g>;
+              })}
+              {rows.map((r, i) => {
+                const cx = padL + slot * (i + 0.5);
+                const hp = (r.principal / niceMax) * ih;
+                const hin = (r.interest / niceMax) * ih;
+                const monthLabel = new Date(r.month + "-01").toLocaleDateString("en-US", { month: "short" }).toUpperCase();
+                return <g key={i}>
+                  <rect x={cx - bw - 1} y={padT + ih - hp} width={bw} height={hp} fill={colors.green} />
+                  <rect x={cx + 1} y={padT + ih - hin} width={bw} height={hin} fill={colors.red} />
+                  <text x={cx} y={H - 8} fontFamily="'IBM Plex Mono',monospace" fontSize="9" fill={colors.textMuted} textAnchor="middle">{monthLabel}</text>
+                </g>;
+              })}
+            </svg>
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: "12px", fontFamily: "'IBM Plex Mono', monospace", fontSize: "10px", letterSpacing: "0.1em", textTransform: "uppercase" }}>
+              <div style={{ display: "flex", gap: "20px" }}>
+                <span style={{ color: colors.textDim }}><span style={{ display: "inline-block", width: "10px", height: "10px", background: colors.green, marginRight: "6px", verticalAlign: "middle" }} />Principal <span style={{ color: colors.green, marginLeft: "4px" }}>{fmt(totalPrin)}</span></span>
+                <span style={{ color: colors.textDim }}><span style={{ display: "inline-block", width: "10px", height: "10px", background: colors.red, marginRight: "6px", verticalAlign: "middle" }} />Interest <span style={{ color: colors.red, marginLeft: "4px" }}>{fmt(totalInt)}</span></span>
+              </div>
+              <span style={{ color: colors.textDim }}>Total Outlay · <span style={{ color: colors.text }}>{fmt(totalPrin + totalInt)}</span></span>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 
