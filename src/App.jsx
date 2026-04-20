@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { fetchCryptoPrices, fetchHyperliquidPrices, fetchAllMFNavs, fetchEquityPricesFromSheet, generateSheetTemplate, fetchExchangeRates } from "./priceService.js";
-import PortfolioChart, { MultiLineChart } from "./PortfolioChart.jsx";
+import PortfolioChart, { MultiLineChart, CashFlowBarChart, AmortBarChart } from "./PortfolioChart.jsx";
 import DonutChart from "./DonutChart.jsx";
 
 const uid = () => Math.random().toString(36).slice(2, 9);
@@ -1366,8 +1366,6 @@ export default function App() {
 
         {/* Cash Flow 12mo Chart */}
         {(() => {
-          // Build last 12 months (oldest → newest). Fill from ledger where available,
-          // and show the current month as provisional (dashed bars) based on live values.
           const now = new Date();
           const months = [];
           for (let i = 11; i >= 0; i--) {
@@ -1379,21 +1377,34 @@ export default function App() {
           const ledgerByYm = {};
           (data.monthlyLedger || []).forEach(l => { ledgerByYm[l.ym] = l; });
 
+          // Build chart rows: each row is a stacked bar where segments sum to Income
+          // If outflows > income, we add a "Deficit" segment (rendered as red overflow above income line)
           const rows = months.map(m => {
             const l = ledgerByYm[m.ym];
-            if (l && l.skipped) {
-              return { ym: m.ym, date: m.date, income: 0, out: 0, provisional: false, skipped: true };
+            const label = m.date.toLocaleDateString("en-US", { month: "short" }).toUpperCase();
+            if (l && l.skipped) return { label, ym: m.ym, fixed: 0, sips: 0, oneOffs: 0, surplus: 0, deficit: 0, income: 0, skipped: true };
+            let income = 0, fixed = 0, sips = 0, oneOffs = 0;
+            if (l) { income = l.income || 0; fixed = l.fixedExp || 0; sips = l.sips || 0; oneOffs = l.oneOffs || 0; }
+            else if (m.ym === currentYm) {
+              income = calc.totalIncomeEur;
+              fixed = calc.totalFixedEur;
+              sips = calc.totalSipsEur;
+              oneOffs = calc.thisMonthOneOffEur;
+            } else {
+              return { label, ym: m.ym, fixed: 0, sips: 0, oneOffs: 0, surplus: 0, deficit: 0, income: 0 };
             }
-            if (l) {
-              return { ym: m.ym, date: m.date, income: l.income || 0, out: (l.fixedExp || 0) + (l.sips || 0) + (l.oneOffs || 0), provisional: false };
-            }
-            if (m.ym === currentYm) {
-              return { ym: m.ym, date: m.date, income: calc.totalIncomeEur, out: calc.totalFixedEur + calc.totalSipsEur + calc.thisMonthOneOffEur, provisional: true };
-            }
-            return { ym: m.ym, date: m.date, income: 0, out: 0, provisional: false, missing: true };
+            const totalOut = fixed + sips + oneOffs;
+            const surplus = Math.max(0, income - totalOut);
+            // If spending > income, deficit is the overflow (shown as red overflow above Income line)
+            // We clip the stack at Income and show deficit separately
+            const deficit = Math.max(0, totalOut - income);
+            // When deficit exists, fixed+sips+oneOffs total > income. We scale them down to fit under income? No —
+            // Cleaner: keep them at actual values, have the stack go above income, with surplus=0.
+            // Deficit bar is only for visual marker. Render the actual amounts and let stack go over.
+            return { label, ym: m.ym, fixed, sips, oneOffs, surplus, deficit, income };
           });
 
-          const hasAnyData = rows.some(r => r.income > 0 || r.out > 0);
+          const hasAnyData = rows.some(r => r.income > 0 || r.fixed > 0 || r.sips > 0 || r.oneOffs > 0);
           if (!hasAnyData) {
             return <div style={s.card}>
               <div style={s.flex}>
@@ -1406,16 +1417,8 @@ export default function App() {
             </div>;
           }
 
-          const W = 800, H = 200, padL = 40, padR = 10, padT = 20, padB = 30;
-          const iw = W - padL - padR, ih = H - padT - padB;
-          const max = Math.max(...rows.map(r => Math.max(r.income, r.out)));
-          const niceMax = max > 0 ? Math.ceil(max / 500) * 500 : 500;
-          const slot = iw / rows.length;
-          const bw = slot * 0.32;
-
-          // Compute surplus % as avg across populated months
           const populated = rows.filter(r => r.income > 0);
-          const avgSurplusPct = populated.length ? populated.reduce((s, r) => s + (r.income > 0 ? ((r.income - r.out) / r.income) * 100 : 0), 0) / populated.length : 0;
+          const avgSurplusPct = populated.length ? populated.reduce((s, r) => s + ((r.income > 0) ? ((r.surplus - r.deficit) / r.income) * 100 : 0), 0) / populated.length : 0;
 
           return <div style={s.card}>
             <div style={s.flex}>
@@ -1424,33 +1427,17 @@ export default function App() {
                 Surplus Avg {avgSurplusPct.toFixed(0)}%
               </span>
             </div>
-            <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" style={{ width: "100%", height: "auto", marginTop: "12px", display: "block" }}>
-              {[0, 0.25, 0.5, 0.75, 1].map((t, i) => {
-                const gy = padT + ih - t * ih;
-                return <g key={i}>
-                  <line x1={padL} x2={W - padR} y1={gy} y2={gy} stroke={colors.gridLine} strokeDasharray={i === 0 ? "0" : "2,4"} />
-                  <text x={padL - 6} y={gy + 3} fontFamily="'IBM Plex Mono',monospace" fontSize="9" fill={colors.textMuted} textAnchor="end">{niceMax * t >= 1000 ? `${((niceMax * t) / 1000).toFixed(1)}k` : (niceMax * t).toFixed(0)}</text>
-                </g>;
-              })}
-              {rows.map((r, i) => {
-                const cx = padL + slot * (i + 0.5);
-                const hi = niceMax > 0 ? (r.income / niceMax) * ih : 0;
-                const ho = niceMax > 0 ? (r.out / niceMax) * ih : 0;
-                const monthLabel = r.date.toLocaleDateString("en-US", { month: "short" }).charAt(0);
-                const opacity = r.provisional ? 0.45 : 1;
-                return <g key={i}>
-                  {r.income > 0 && <rect x={cx - bw - 1} y={padT + ih - hi} width={bw} height={hi} fill={colors.cyan} opacity={opacity} />}
-                  {r.out > 0 && <rect x={cx + 1} y={padT + ih - ho} width={bw} height={ho} fill={colors.red} opacity={opacity} />}
-                  <text x={cx} y={H - 8} fontFamily="'IBM Plex Mono',monospace" fontSize="9" fill={r.provisional ? colors.accent : colors.textMuted} textAnchor="middle">{monthLabel}</text>
-                </g>;
-              })}
-            </svg>
-            <div style={{ display: "flex", justifyContent: "space-between", marginTop: "12px", fontFamily: "'IBM Plex Mono', monospace", fontSize: "10px", letterSpacing: "0.1em", textTransform: "uppercase" }}>
-              <div style={{ display: "flex", gap: "20px" }}>
-                <span style={{ color: colors.textDim }}><span style={{ display: "inline-block", width: "10px", height: "10px", background: colors.cyan, marginRight: "6px", verticalAlign: "middle" }} />Income</span>
-                <span style={{ color: colors.textDim }}><span style={{ display: "inline-block", width: "10px", height: "10px", background: colors.red, marginRight: "6px", verticalAlign: "middle" }} />Outflow (Exp + SIPs + 1-off)</span>
+            <div style={{ marginTop: "12px" }}>
+              <CashFlowBarChart data={rows} />
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: "12px", fontFamily: "'IBM Plex Mono', monospace", fontSize: "10px", letterSpacing: "0.1em", textTransform: "uppercase", flexWrap: "wrap", gap: "8px" }}>
+              <div style={{ display: "flex", gap: "14px", flexWrap: "wrap" }}>
+                <span style={{ color: colors.textDim }}><span style={{ display: "inline-block", width: "10px", height: "10px", background: colors.red, marginRight: "6px", verticalAlign: "middle" }} />Fixed</span>
+                <span style={{ color: colors.textDim }}><span style={{ display: "inline-block", width: "10px", height: "10px", background: "#d67ab5", marginRight: "6px", verticalAlign: "middle" }} />SIPs</span>
+                <span style={{ color: colors.textDim }}><span style={{ display: "inline-block", width: "10px", height: "10px", background: colors.violet, marginRight: "6px", verticalAlign: "middle" }} />1-offs</span>
+                <span style={{ color: colors.textDim }}><span style={{ display: "inline-block", width: "10px", height: "10px", background: colors.green, marginRight: "6px", verticalAlign: "middle" }} />Surplus</span>
               </div>
-              <span style={{ color: colors.accent }}>Dim bar · Current month (not yet closed)</span>
+              <span style={{ color: colors.textDim }}>Bar total = Income · Green cap = Saved · Red overflow = Deficit</span>
             </div>
           </div>;
         })()}
@@ -2117,7 +2104,6 @@ export default function App() {
 
       {/* Amortization · Next 12 Months Chart */}
       {data.liabilities.length > 0 && (() => {
-        // Aggregate principal vs interest across all loans for next 12 months, in EUR
         const monthly = {};
         const activeLoans = data.liabilities.filter(l => l.totalAmount > 0 && l.tenureMonths > 0 && (l.interestRate > 0 || l.manualEMI > 0));
         activeLoans.forEach(l => {
@@ -2132,18 +2118,13 @@ export default function App() {
             monthly[row.month].interest += iEur;
           });
         });
-        const rows = Object.values(monthly).sort((a, b) => a.month.localeCompare(b.month));
+        const rows = Object.values(monthly)
+          .sort((a, b) => a.month.localeCompare(b.month))
+          .map(r => ({ ...r, label: new Date(r.month + "-01").toLocaleDateString("en-US", { month: "short" }).toUpperCase() }));
         if (rows.length === 0) return null;
 
         const totalPrin = rows.reduce((s, r) => s + r.principal, 0);
         const totalInt = rows.reduce((s, r) => s + r.interest, 0);
-
-        const W = 800, H = 200, padL = 40, padR = 10, padT = 20, padB = 30;
-        const iw = W - padL - padR, ih = H - padT - padB;
-        const max = Math.max(...rows.map(r => r.principal + r.interest));
-        const niceMax = max > 0 ? Math.ceil(max / 100) * 100 : 100;
-        const slot = iw / rows.length;
-        const bw = slot * 0.32;
 
         return (
           <div style={s.card}>
@@ -2153,27 +2134,10 @@ export default function App() {
                 Principal · Interest
               </span>
             </div>
-            <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" style={{ width: "100%", height: "auto", marginTop: "12px", display: "block" }}>
-              {[0, 0.25, 0.5, 0.75, 1].map((t, i) => {
-                const gy = padT + ih - t * ih;
-                return <g key={i}>
-                  <line x1={padL} x2={W - padR} y1={gy} y2={gy} stroke={colors.gridLine} strokeDasharray={i === 0 ? "0" : "2,4"} />
-                  <text x={padL - 6} y={gy + 3} fontFamily="'IBM Plex Mono',monospace" fontSize="9" fill={colors.textMuted} textAnchor="end">{niceMax * t >= 1000 ? `${((niceMax * t) / 1000).toFixed(1)}k` : (niceMax * t).toFixed(0)}</text>
-                </g>;
-              })}
-              {rows.map((r, i) => {
-                const cx = padL + slot * (i + 0.5);
-                const hp = (r.principal / niceMax) * ih;
-                const hin = (r.interest / niceMax) * ih;
-                const monthLabel = new Date(r.month + "-01").toLocaleDateString("en-US", { month: "short" }).toUpperCase();
-                return <g key={i}>
-                  <rect x={cx - bw - 1} y={padT + ih - hp} width={bw} height={hp} fill={colors.green} />
-                  <rect x={cx + 1} y={padT + ih - hin} width={bw} height={hin} fill={colors.red} />
-                  <text x={cx} y={H - 8} fontFamily="'IBM Plex Mono',monospace" fontSize="9" fill={colors.textMuted} textAnchor="middle">{monthLabel}</text>
-                </g>;
-              })}
-            </svg>
-            <div style={{ display: "flex", justifyContent: "space-between", marginTop: "12px", fontFamily: "'IBM Plex Mono', monospace", fontSize: "10px", letterSpacing: "0.1em", textTransform: "uppercase" }}>
+            <div style={{ marginTop: "12px" }}>
+              <AmortBarChart data={rows} />
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: "12px", fontFamily: "'IBM Plex Mono', monospace", fontSize: "10px", letterSpacing: "0.1em", textTransform: "uppercase", flexWrap: "wrap", gap: "8px" }}>
               <div style={{ display: "flex", gap: "20px" }}>
                 <span style={{ color: colors.textDim }}><span style={{ display: "inline-block", width: "10px", height: "10px", background: colors.green, marginRight: "6px", verticalAlign: "middle" }} />Principal <span style={{ color: colors.green, marginLeft: "4px" }}>{fmt(totalPrin)}</span></span>
                 <span style={{ color: colors.textDim }}><span style={{ display: "inline-block", width: "10px", height: "10px", background: colors.red, marginRight: "6px", verticalAlign: "middle" }} />Interest <span style={{ color: colors.red, marginLeft: "4px" }}>{fmt(totalInt)}</span></span>

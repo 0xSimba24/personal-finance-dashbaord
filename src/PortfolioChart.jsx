@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Area, AreaChart, CartesianGrid } from "recharts";
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Area, AreaChart, CartesianGrid, BarChart, Bar, Legend } from "recharts";
 
 const colors = {
   bg: "#0a0a0a", card: "#0f0f0f", cardAlt: "#161616", border: "#1f1f1f",
@@ -167,5 +167,58 @@ export function MultiLineChart({ history, items, title, currency = "EUR", height
         </LineChart>
       </ResponsiveContainer>
     </div>
+  );
+}
+
+// ── Stacked bar chart for Cash Flow 12mo ──
+// Bar height = Income. Segments = Fixed (red), SIPs (orange), One-offs (magenta), Surplus (green)
+// For deficit months (where outflows > income), Deficit renders as red overflow above the income line.
+export function CashFlowBarChart({ data: chartData, height = 220 }) {
+  const anyData = chartData.some(d => d.income > 0 || d.fixed > 0 || d.sips > 0 || d.oneOffs > 0);
+  if (!anyData) return null;
+
+  return (
+    <ResponsiveContainer width="100%" height={height}>
+      <BarChart data={chartData} margin={{ top: 5, right: 5, bottom: 5, left: 15 }}>
+        <CartesianGrid stroke={colors.gridLine} strokeDasharray="2 4" vertical={false} />
+        <XAxis dataKey="label" tick={{ fontSize: 9, fill: colors.textMuted, fontFamily: "'IBM Plex Mono', monospace" }} axisLine={false} tickLine={false} />
+        <YAxis tick={{ fontSize: 9, fill: colors.textMuted, fontFamily: "'IBM Plex Mono', monospace" }} axisLine={false} tickLine={false} width={55} tickFormatter={v => v >= 1000 ? `${(v/1000).toFixed(1)}k` : v.toFixed(0)} />
+        <Tooltip
+          contentStyle={{ background: "#000", border: `1px solid ${colors.accent}`, borderRadius: 0, fontSize: "11px", fontFamily: "'IBM Plex Mono', monospace", letterSpacing: "0.05em", padding: "8px 10px" }}
+          labelStyle={{ color: colors.accent, textTransform: "uppercase", fontSize: "10px", letterSpacing: "0.14em", marginBottom: "4px" }}
+          itemStyle={{ color: colors.text, padding: "1px 0" }}
+          formatter={(v, name) => [fmt(v, "EUR"), name]}
+          cursor={{ fill: "rgba(245,166,35,0.05)" }}
+        />
+        <Bar dataKey="fixed" stackId="cf" fill={colors.red} name="Fixed Exp" />
+        <Bar dataKey="sips" stackId="cf" fill="#d67ab5" name="SIPs" />
+        <Bar dataKey="oneOffs" stackId="cf" fill={colors.violet} name="One-offs" />
+        <Bar dataKey="surplus" stackId="cf" fill={colors.green} name="Surplus" />
+        <Bar dataKey="deficit" stackId="cf" fill={colors.red} fillOpacity={0.5} stroke={colors.red} strokeWidth={1} name="Deficit" />
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
+// ── Grouped bar chart for Amortization 12mo ──
+// Two bars per month: principal (green) and interest (red). With tooltip and consistent axes.
+export function AmortBarChart({ data: chartData, height = 220 }) {
+  return (
+    <ResponsiveContainer width="100%" height={height}>
+      <BarChart data={chartData} margin={{ top: 5, right: 5, bottom: 5, left: 15 }}>
+        <CartesianGrid stroke={colors.gridLine} strokeDasharray="2 4" vertical={false} />
+        <XAxis dataKey="label" tick={{ fontSize: 9, fill: colors.textMuted, fontFamily: "'IBM Plex Mono', monospace" }} axisLine={false} tickLine={false} />
+        <YAxis tick={{ fontSize: 9, fill: colors.textMuted, fontFamily: "'IBM Plex Mono', monospace" }} axisLine={false} tickLine={false} width={55} tickFormatter={v => v >= 1000 ? `${(v/1000).toFixed(1)}k` : v.toFixed(0)} />
+        <Tooltip
+          contentStyle={{ background: "#000", border: `1px solid ${colors.accent}`, borderRadius: 0, fontSize: "11px", fontFamily: "'IBM Plex Mono', monospace", letterSpacing: "0.05em", padding: "8px 10px" }}
+          labelStyle={{ color: colors.accent, textTransform: "uppercase", fontSize: "10px", letterSpacing: "0.14em", marginBottom: "4px" }}
+          itemStyle={{ color: colors.text, padding: "1px 0" }}
+          formatter={(v, name) => [fmt(v, "EUR"), name]}
+          cursor={{ fill: "rgba(245,166,35,0.05)" }}
+        />
+        <Bar dataKey="principal" fill={colors.green} name="Principal" />
+        <Bar dataKey="interest" fill={colors.red} name="Interest" />
+      </BarChart>
+    </ResponsiveContainer>
   );
 }
