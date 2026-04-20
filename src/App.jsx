@@ -436,6 +436,36 @@ export default function App() {
     return { rate, totalIncomeEur, totalFixedEur, totalSipsEur, totalOneOffEur, thisMonthOneOffEur, surplus, totalAllocEur, unallocated, mfValue, eqValue, cashValue, cryptoValue, propValue, esopValue, grossAssets, liquidAssets, illiquidAssets, totalLiabEur, netWorth, liquidNW, illiquidNW };
   }, [data]);
 
+  // Compute phase current value — auto-sum linked holdings or use manual value
+  const getPhaseCurrent = useCallback((phase) => {
+    if (!phase.linkedHoldings || phase.linkedHoldings.length === 0) return phase.current || 0;
+    const usdRate = data.settings.eurToUsd || 1.08;
+    const r = data.settings.eurToInr || 90;
+    const toPhaseCcy = (amt, fromCcy) => {
+      if (fromCcy === phase.currency) return amt;
+      // Convert to EUR first, then to phase currency
+      const eurAmt = fromCcy === "EUR" ? amt : fromCcy === "INR" ? amt / r : amt / usdRate;
+      if (phase.currency === "EUR") return eurAmt;
+      if (phase.currency === "INR") return eurAmt * r;
+      if (phase.currency === "USD") return eurAmt * usdRate;
+      return eurAmt;
+    };
+    let sum = 0;
+    for (const link of phase.linkedHoldings) {
+      if (link.type === "cash") {
+        const item = (data.cashSavings || []).find(c => c.id === link.id);
+        if (item) sum += toPhaseCcy(item.amount || 0, item.currency);
+      } else if (link.type === "mf") {
+        const item = (data.mutualFunds || []).find(f => f.id === link.id);
+        if (item) sum += toPhaseCcy((item.units || 0) * (item.currentPrice || 0), item.currency);
+      } else if (link.type === "crypto") {
+        const item = (data.crypto || []).find(c => c.id === link.id);
+        if (item) sum += toPhaseCcy((item.quantity || 0) * (item.currentPrice || 0), item.currency);
+      }
+    }
+    return sum;
+  }, [data]);
+
   const takeSnapshot = useCallback(() => {
     if (!data || !calc) return;
     update("snapshots", [...data.snapshots, {
@@ -946,7 +976,9 @@ export default function App() {
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginTop: "10px" }}>
           {data.phases.map(p => {
-            const prog = pct(p.current, p.target); const isA = p.status === "active"; const isD = p.status === "complete";
+            const isLinked = (p.linkedHoldings || []).length > 0;
+            const currentVal = isLinked ? getPhaseCurrent(p) : (p.current || 0);
+            const prog = pct(currentVal, p.target); const isA = p.status === "active"; const isD = p.status === "complete";
             const statusColor = isD ? colors.green : isA ? colors.accent : colors.textMuted;
             const statusLabel = isD ? "DONE" : isA ? "ACTIVE" : "LOCKED";
             return (
@@ -963,14 +995,22 @@ export default function App() {
                     <div style={{ height: "100%", background: statusColor, width: `${Math.min(100, prog)}%`, transition: "width 0.5s" }} />
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", fontFamily: "'IBM Plex Mono', monospace", fontSize: "10px", color: colors.textDim }}>
-                    <span><ECell value={p.current} type="number" onChange={v => updatePhase(p.id, "current", v)} /> / <ECell value={p.target} type="number" onChange={v => updatePhase(p.id, "target", v)} style={{ color: colors.textDim }} /> {p.currency}</span>
+                    <span>
+                      {isLinked
+                        ? <span style={{ color: colors.text }}>{fmt(currentVal, p.currency)}</span>
+                        : <ECell value={p.current} type="number" onChange={v => updatePhase(p.id, "current", v)} />
+                      }
+                      {" / "}
+                      <ECell value={p.target} type="number" onChange={v => updatePhase(p.id, "target", v)} style={{ color: colors.textDim }} /> {p.currency}
+                      {isLinked && <span style={{ marginLeft: "6px", padding: "1px 4px", border: `1px solid ${colors.accent}`, color: colors.accent, fontSize: "8px", letterSpacing: "0.1em" }}>AUTO</span>}
+                    </span>
                     <span>{prog.toFixed(0)}%</span>
                   </div>
                 </>}
                 {p.target === 0 && <div style={{ fontSize: "10px", color: colors.textMuted, fontFamily: "'IBM Plex Mono', monospace" }}>Set target: <ECell value={p.target} type="number" onChange={v => updatePhase(p.id, "target", v)} /></div>}
                 {(p.milestones || []).length > 0 && <div style={{ marginTop: "10px", paddingTop: "8px", borderTop: `1px solid ${colors.border}` }}>
                   {(p.milestones || []).map((m, i) => {
-                    const done = p.current >= m.amount;
+                    const done = currentVal >= m.amount;
                     return <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontFamily: "'IBM Plex Mono', monospace", fontSize: "10px", padding: "3px 0", color: done ? colors.green : colors.textDim }}>
                       <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                         {done ? "✓" : "○"} <ECell value={m.name} onChange={v => updateMilestone(p.id, i, "name", v)} style={{ fontSize: "10px" }} />
@@ -982,6 +1022,55 @@ export default function App() {
                     </div>;
                   })}
                 </div>}
+                {/* Linked Holdings */}
+                <details style={{ marginTop: "8px" }}>
+                  <summary style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "9px", color: colors.textDim, letterSpacing: "0.1em", textTransform: "uppercase", cursor: "pointer", padding: "4px 0" }}>
+                    <span style={{ color: colors.accent, marginRight: "4px" }}>&gt;</span>Linked Holdings {isLinked && <span style={{ color: colors.accent }}>({p.linkedHoldings.length})</span>}
+                  </summary>
+                  <div style={{ marginTop: "8px", padding: "8px", background: "#000", border: `1px solid ${colors.border}` }}>
+                    {(p.linkedHoldings || []).length > 0 && <div style={{ marginBottom: "8px" }}>
+                      {p.linkedHoldings.map((link, idx) => {
+                        let item, label, val;
+                        if (link.type === "cash") { item = (data.cashSavings || []).find(c => c.id === link.id); label = item ? `Cash · ${item.name}` : "Cash · (deleted)"; val = item ? item.amount : 0; }
+                        else if (link.type === "mf") { item = (data.mutualFunds || []).find(f => f.id === link.id); label = item ? `MF · ${item.name}` : "MF · (deleted)"; val = item ? item.units * item.currentPrice : 0; }
+                        else if (link.type === "crypto") { item = (data.crypto || []).find(c => c.id === link.id); label = item ? `Crypto · ${item.name}` : "Crypto · (deleted)"; val = item ? item.quantity * item.currentPrice : 0; }
+                        return <div key={idx} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontFamily: "'IBM Plex Mono', monospace", fontSize: "10px", padding: "3px 0", color: item ? colors.text : colors.textMuted }}>
+                          <span>{label}</span>
+                          <span style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                            <span style={{ color: colors.textDim }}>{item ? fmt(val, item.currency) : "—"}</span>
+                            <button style={{ ...s.btnDanger, padding: "1px 5px", fontSize: "9px" }} onClick={() => {
+                              const newLinks = [...(p.linkedHoldings || [])]; newLinks.splice(idx, 1);
+                              updatePhase(p.id, "linkedHoldings", newLinks);
+                            }}>×</button>
+                          </span>
+                        </div>;
+                      })}
+                    </div>}
+                    <select style={{ ...s.select, width: "100%", fontSize: "10px" }} value="" onChange={e => {
+                      if (!e.target.value) return;
+                      const [type, id] = e.target.value.split("::");
+                      const existing = (p.linkedHoldings || []).some(l => l.type === type && l.id === id);
+                      if (existing) return;
+                      const newLinks = [...(p.linkedHoldings || []), { type, id }];
+                      updatePhase(p.id, "linkedHoldings", newLinks);
+                      e.target.value = "";
+                    }}>
+                      <option value="">+ Link holding...</option>
+                      <optgroup label="Cash & Savings">
+                        {(data.cashSavings || []).map(c => <option key={c.id} value={`cash::${c.id}`}>{c.name} ({fmt(c.amount, c.currency)})</option>)}
+                      </optgroup>
+                      <optgroup label="Mutual Funds / ETFs">
+                        {(data.mutualFunds || []).map(f => <option key={f.id} value={`mf::${f.id}`}>{f.name}</option>)}
+                      </optgroup>
+                      <optgroup label="Crypto">
+                        {(data.crypto || []).map(c => <option key={c.id} value={`crypto::${c.id}`}>{c.name}</option>)}
+                      </optgroup>
+                    </select>
+                    {isLinked && <div style={{ marginTop: "6px", fontSize: "9px", color: colors.textMuted, fontFamily: "'IBM Plex Mono', monospace", letterSpacing: "0.05em" }}>
+                      Auto-sum active. Manual current value ignored.
+                    </div>}
+                  </div>
+                </details>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "8px", paddingTop: "6px", borderTop: `1px dashed ${colors.border}` }}>
                   <button style={{ ...s.btnOutline, padding: "2px 8px", fontSize: "9px" }} onClick={() => addMilestone(p.id)}>+ MILESTONE</button>
                   {p.status !== "active" && <button style={s.btnDanger} onClick={() => { if (confirm(`Delete Phase ${p.id}?`)) removePhase(p.id); }}>×</button>}
@@ -1877,7 +1966,8 @@ export default function App() {
   };
 
   const activePhaseForStrip = data.phases.find(p => p.status === "active");
-  const phaseProgressPct = activePhaseForStrip && activePhaseForStrip.target > 0 ? (activePhaseForStrip.current / activePhaseForStrip.target * 100) : 0;
+  const activePhaseCurrent = activePhaseForStrip ? getPhaseCurrent(activePhaseForStrip) : 0;
+  const phaseProgressPct = activePhaseForStrip && activePhaseForStrip.target > 0 ? (activePhaseCurrent / activePhaseForStrip.target * 100) : 0;
 
   // Portfolio today from daily movers
   let portfolioTodayAmt = 0, portfolioTodayPct = 0;
