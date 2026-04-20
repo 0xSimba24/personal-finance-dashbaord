@@ -174,8 +174,25 @@ export function MultiLineChart({ history, items, title, currency = "EUR", height
 // Bar height = Income. Segments = Fixed (red), SIPs (orange), One-offs (magenta), Surplus (green)
 // For deficit months (where outflows > income), Deficit renders as red overflow above the income line.
 export function CashFlowBarChart({ data: chartData, height = 220 }) {
+  const [hoverKey, setHoverKey] = useState(null);
   const anyData = chartData.some(d => d.income > 0 || d.fixed > 0 || d.sips > 0 || d.oneOffs > 0);
   if (!anyData) return null;
+
+  // Render opacity: non-hovered segments fade when any is hovered
+  const op = (key) => hoverKey == null ? 1 : (hoverKey === key ? 1 : 0.25);
+
+  // Custom tooltip: if a segment is hovered, show only that segment's value
+  const CustomTip = ({ active, payload, label }) => {
+    if (!active || !payload || !payload.length) return null;
+    const items = hoverKey ? payload.filter(p => p.dataKey === hoverKey) : payload.filter(p => p.value > 0);
+    if (items.length === 0) return null;
+    return <div style={{ background: "#000", border: `1px solid ${colors.accent}`, borderRadius: 0, fontSize: "11px", fontFamily: "'IBM Plex Mono', monospace", letterSpacing: "0.05em", padding: "8px 10px" }}>
+      <div style={{ color: colors.accent, textTransform: "uppercase", fontSize: "10px", letterSpacing: "0.14em", marginBottom: "4px" }}>{label}</div>
+      {items.map((it, i) => <div key={i} style={{ color: it.color, padding: "1px 0", display: "flex", justifyContent: "space-between", gap: "12px" }}>
+        <span>{it.name}</span><span>{fmt(it.value, "EUR")}</span>
+      </div>)}
+    </div>;
+  };
 
   return (
     <ResponsiveContainer width="100%" height={height}>
@@ -183,41 +200,43 @@ export function CashFlowBarChart({ data: chartData, height = 220 }) {
         <CartesianGrid stroke={colors.gridLine} strokeDasharray="2 4" vertical={false} />
         <XAxis dataKey="label" tick={{ fontSize: 9, fill: colors.textMuted, fontFamily: "'IBM Plex Mono', monospace" }} axisLine={false} tickLine={false} />
         <YAxis tick={{ fontSize: 9, fill: colors.textMuted, fontFamily: "'IBM Plex Mono', monospace" }} axisLine={false} tickLine={false} width={55} tickFormatter={v => v >= 1000 ? `${(v/1000).toFixed(1)}k` : v.toFixed(0)} />
-        <Tooltip
-          contentStyle={{ background: "#000", border: `1px solid ${colors.accent}`, borderRadius: 0, fontSize: "11px", fontFamily: "'IBM Plex Mono', monospace", letterSpacing: "0.05em", padding: "8px 10px" }}
-          labelStyle={{ color: colors.accent, textTransform: "uppercase", fontSize: "10px", letterSpacing: "0.14em", marginBottom: "4px" }}
-          itemStyle={{ color: colors.text, padding: "1px 0" }}
-          formatter={(v, name) => [fmt(v, "EUR"), name]}
-          cursor={{ fill: "rgba(245,166,35,0.05)" }}
-        />
-        <Bar dataKey="fixed" stackId="cf" fill={colors.red} name="Fixed Exp" />
-        <Bar dataKey="sips" stackId="cf" fill="#d67ab5" name="SIPs" />
-        <Bar dataKey="oneOffs" stackId="cf" fill={colors.violet} name="One-offs" />
-        <Bar dataKey="surplus" stackId="cf" fill={colors.green} name="Surplus" />
-        <Bar dataKey="deficit" stackId="cf" fill={colors.red} fillOpacity={0.5} stroke={colors.red} strokeWidth={1} name="Deficit" />
+        <Tooltip content={<CustomTip />} cursor={{ fill: "rgba(245,166,35,0.05)" }} />
+        <Bar dataKey="fixed" stackId="cf" fill={colors.red} name="Fixed Exp" fillOpacity={op("fixed")} onMouseEnter={() => setHoverKey("fixed")} onMouseLeave={() => setHoverKey(null)} />
+        <Bar dataKey="sips" stackId="cf" fill="#d67ab5" name="SIPs" fillOpacity={op("sips")} onMouseEnter={() => setHoverKey("sips")} onMouseLeave={() => setHoverKey(null)} />
+        <Bar dataKey="oneOffs" stackId="cf" fill={colors.violet} name="One-offs" fillOpacity={op("oneOffs")} onMouseEnter={() => setHoverKey("oneOffs")} onMouseLeave={() => setHoverKey(null)} />
+        <Bar dataKey="surplus" stackId="cf" fill={colors.green} name="Surplus" fillOpacity={op("surplus")} onMouseEnter={() => setHoverKey("surplus")} onMouseLeave={() => setHoverKey(null)} />
+        <Bar dataKey="deficit" stackId="cf" fill={colors.red} fillOpacity={hoverKey == null ? 0.5 : (hoverKey === "deficit" ? 0.7 : 0.15)} stroke={colors.red} strokeWidth={1} name="Deficit" onMouseEnter={() => setHoverKey("deficit")} onMouseLeave={() => setHoverKey(null)} />
       </BarChart>
     </ResponsiveContainer>
   );
 }
 
 // ── Grouped bar chart for Amortization 12mo ──
-// Two bars per month: principal (green) and interest (red). With tooltip and consistent axes.
 export function AmortBarChart({ data: chartData, height = 220 }) {
+  const [hoverKey, setHoverKey] = useState(null);
+  const op = (key) => hoverKey == null ? 1 : (hoverKey === key ? 1 : 0.25);
+
+  const CustomTip = ({ active, payload, label }) => {
+    if (!active || !payload || !payload.length) return null;
+    const items = hoverKey ? payload.filter(p => p.dataKey === hoverKey) : payload.filter(p => p.value > 0);
+    if (items.length === 0) return null;
+    return <div style={{ background: "#000", border: `1px solid ${colors.accent}`, borderRadius: 0, fontSize: "11px", fontFamily: "'IBM Plex Mono', monospace", letterSpacing: "0.05em", padding: "8px 10px" }}>
+      <div style={{ color: colors.accent, textTransform: "uppercase", fontSize: "10px", letterSpacing: "0.14em", marginBottom: "4px" }}>{label}</div>
+      {items.map((it, i) => <div key={i} style={{ color: it.color, padding: "1px 0", display: "flex", justifyContent: "space-between", gap: "12px" }}>
+        <span>{it.name}</span><span>{fmt(it.value, "EUR")}</span>
+      </div>)}
+    </div>;
+  };
+
   return (
     <ResponsiveContainer width="100%" height={height}>
       <BarChart data={chartData} margin={{ top: 5, right: 5, bottom: 5, left: 15 }}>
         <CartesianGrid stroke={colors.gridLine} strokeDasharray="2 4" vertical={false} />
         <XAxis dataKey="label" tick={{ fontSize: 9, fill: colors.textMuted, fontFamily: "'IBM Plex Mono', monospace" }} axisLine={false} tickLine={false} />
         <YAxis tick={{ fontSize: 9, fill: colors.textMuted, fontFamily: "'IBM Plex Mono', monospace" }} axisLine={false} tickLine={false} width={55} tickFormatter={v => v >= 1000 ? `${(v/1000).toFixed(1)}k` : v.toFixed(0)} />
-        <Tooltip
-          contentStyle={{ background: "#000", border: `1px solid ${colors.accent}`, borderRadius: 0, fontSize: "11px", fontFamily: "'IBM Plex Mono', monospace", letterSpacing: "0.05em", padding: "8px 10px" }}
-          labelStyle={{ color: colors.accent, textTransform: "uppercase", fontSize: "10px", letterSpacing: "0.14em", marginBottom: "4px" }}
-          itemStyle={{ color: colors.text, padding: "1px 0" }}
-          formatter={(v, name) => [fmt(v, "EUR"), name]}
-          cursor={{ fill: "rgba(245,166,35,0.05)" }}
-        />
-        <Bar dataKey="principal" fill={colors.green} name="Principal" />
-        <Bar dataKey="interest" fill={colors.red} name="Interest" />
+        <Tooltip content={<CustomTip />} cursor={{ fill: "rgba(245,166,35,0.05)" }} />
+        <Bar dataKey="principal" fill={colors.green} name="Principal" fillOpacity={op("principal")} onMouseEnter={() => setHoverKey("principal")} onMouseLeave={() => setHoverKey(null)} />
+        <Bar dataKey="interest" fill={colors.red} name="Interest" fillOpacity={op("interest")} onMouseEnter={() => setHoverKey("interest")} onMouseLeave={() => setHoverKey(null)} />
       </BarChart>
     </ResponsiveContainer>
   );
