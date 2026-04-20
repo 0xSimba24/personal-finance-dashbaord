@@ -273,6 +273,13 @@ const CATEGORY_COLORS = {
   Loans: "#8a9a5b", Other: "#8a8a82"
 };
 
+const ONEOFF_CATEGORIES = ["Travel", "Electronics", "Medical", "Home", "Auto", "Gifts", "Education", "Clothing", "Events", "Other"];
+const ONEOFF_CATEGORY_COLORS = {
+  Travel: "#4ec9e6", Electronics: "#f5a623", Medical: "#e25555",
+  Home: "#4ea96a", Auto: "#d67ab5", Gifts: "#9b7ed6",
+  Education: "#8a9a5b", Clothing: "#c4841c", Events: "#d4a373", Other: "#8a8a82"
+};
+
 const autoCategorize = (name) => {
   const n = name.toLowerCase();
   if (/parking|car.*loan|car.*emi|car charging|car insur|charging|tesla premium/.test(n)) return "Transportation";
@@ -566,6 +573,7 @@ export default function App() {
   const [showDailyMovers, setShowDailyMovers] = useState(true);
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
   const [showCompletedPhases, setShowCompletedPhases] = useState(false);
+  const [oneOffYear, setOneOffYear] = useState(new Date().getFullYear());
   const [allocFilter, setAllocFilter] = useState({ liquid: true, illiquid: true });
 
   const refreshPrices = useCallback(async () => {
@@ -1356,12 +1364,26 @@ export default function App() {
               {data.oneOffExpenses.length > 0 && <span style={{ fontSize: "10px", color: colors.textDim, letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'IBM Plex Mono', monospace" }}>
                 This Month: <span style={{ color: colors.red }}>{fmt(calc.thisMonthOneOffEur)}</span> · Total: <span style={{ color: colors.text }}>{fmt(calc.totalOneOffEur)}</span>
               </span>}
-              <button style={s.btn} onClick={() => addItem("oneOffExpenses", { name: "Expense", amount: 0, currency: "EUR", date: new Date().toISOString().slice(0, 10) })}>+ ADD</button>
+              <button style={s.btn} onClick={() => addItem("oneOffExpenses", { name: "Expense", amount: 0, currency: "EUR", date: new Date().toISOString().slice(0, 10), category: "Other" })}>+ ADD</button>
             </div>
           </div>
           {data.oneOffExpenses.length === 0 ? <div style={{ fontSize: "10px", color: colors.textMuted, padding: "16px 0", textAlign: "center", letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'IBM Plex Mono', monospace" }}>No one-off expenses</div> :
-          <table style={{ ...s.table, marginTop: "10px" }}><thead><tr><th style={s.th}>Item</th><th style={s.th}>Amount</th><th style={s.th}>Curr</th><th style={s.th}>Date</th><th style={s.th}></th></tr></thead>
-          <tbody>{data.oneOffExpenses.map(e => <tr key={e.id}><td style={s.td}><ECell value={e.name} onChange={v => updateItem("oneOffExpenses", e.id, "name", v)} /></td><td style={s.td}><ECell value={e.amount} type="number" onChange={v => updateItem("oneOffExpenses", e.id, "amount", v)} /></td><td style={s.td}><CurrSelect value={e.currency} onChange={v => updateItem("oneOffExpenses", e.id, "currency", v)} /></td><td style={s.td}><input type="date" style={s.input} value={e.date} onChange={ev => updateItem("oneOffExpenses", e.id, "date", ev.target.value)} /></td><td style={s.td}><button style={s.btnDanger} onClick={() => removeItem("oneOffExpenses", e.id)}>×</button></td></tr>)}</tbody></table>}
+          <table style={{ ...s.table, marginTop: "10px" }}><thead><tr><th style={s.th}>Item</th><th style={s.th}>Category</th><th style={s.th}>Amount</th><th style={s.th}>Curr</th><th style={s.th}>Date</th><th style={s.th}></th></tr></thead>
+          <tbody>{data.oneOffExpenses.map(e => {
+            const cat = e.category || "Other";
+            const catColor = ONEOFF_CATEGORY_COLORS[cat] || colors.textDim;
+            return <tr key={e.id}>
+              <td style={s.td}><ECell value={e.name} onChange={v => updateItem("oneOffExpenses", e.id, "name", v)} /></td>
+              <td style={s.td}>
+                <span style={{ display: "inline-block", width: "8px", height: "8px", background: catColor, marginRight: "6px", verticalAlign: "middle" }} />
+                <select style={{ ...s.select, color: colors.textDim }} value={cat} onChange={ev => updateItem("oneOffExpenses", e.id, "category", ev.target.value)}>{ONEOFF_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}</select>
+              </td>
+              <td style={s.td}><ECell value={e.amount} type="number" onChange={v => updateItem("oneOffExpenses", e.id, "amount", v)} /></td>
+              <td style={s.td}><CurrSelect value={e.currency} onChange={v => updateItem("oneOffExpenses", e.id, "currency", v)} /></td>
+              <td style={s.td}><input type="date" style={s.input} value={e.date} onChange={ev => updateItem("oneOffExpenses", e.id, "date", ev.target.value)} /></td>
+              <td style={s.td}><button style={s.btnDanger} onClick={() => removeItem("oneOffExpenses", e.id)}>×</button></td>
+            </tr>;
+          })}</tbody></table>}
         </div>
 
         {/* Cash Flow 12mo Chart */}
@@ -1564,6 +1586,65 @@ export default function App() {
             </div>
           </div>
         </div>
+
+        {/* One-off Summary */}
+        {data.oneOffExpenses.length > 0 && (() => {
+          const years = [...new Set((data.oneOffExpenses || []).map(e => (e.date || "").slice(0, 4)).filter(y => y.length === 4))].sort().reverse();
+          if (years.length === 0) return null;
+          const activeYear = years.includes(String(oneOffYear)) ? String(oneOffYear) : years[0];
+
+          const filtered = data.oneOffExpenses.filter(e => (e.date || "").slice(0, 4) === activeYear);
+          const byCat = {};
+          filtered.forEach(e => {
+            const cat = e.category || "Other";
+            const eurAmt = toEur(e.amount || 0, e.currency, rate, data.settings.eurToUsd || 1.08);
+            byCat[cat] = (byCat[cat] || 0) + eurAmt;
+          });
+          const catList = ONEOFF_CATEGORIES
+            .filter(c => byCat[c] > 0)
+            .map(c => ({ cat: c, total: byCat[c], color: ONEOFF_CATEGORY_COLORS[c] }))
+            .sort((a, b) => b.total - a.total);
+          const yearTotal = catList.reduce((s, c) => s + c.total, 0);
+
+          return <div style={s.card}>
+            <div style={s.flex}>
+              <H2>One-off Summary</H2>
+              <div style={{ display: "flex", gap: "2px" }}>
+                {years.map(y => (
+                  <button key={y} onClick={() => setOneOffYear(parseInt(y))} style={{
+                    padding: "3px 8px", borderRadius: 0, border: `1px solid ${activeYear === y ? colors.accent : colors.border}`, cursor: "pointer",
+                    fontSize: "9px", fontWeight: 500, fontFamily: "'IBM Plex Mono', monospace",
+                    letterSpacing: "0.1em",
+                    background: activeYear === y ? colors.accent : "transparent",
+                    color: activeYear === y ? colors.bg : colors.textDim,
+                  }}>{y}</button>
+                ))}
+              </div>
+            </div>
+            <div style={{ marginTop: "12px" }}>
+              {catList.length === 0 ? <div style={{ fontSize: "10px", color: colors.textMuted, padding: "16px 0", textAlign: "center", letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'IBM Plex Mono', monospace" }}>No one-offs in {activeYear}</div> :
+              catList.map(c => {
+                const catPct = yearTotal > 0 ? (c.total / yearTotal) * 100 : 0;
+                return <div key={c.cat} style={{ marginBottom: "14px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontFamily: "'IBM Plex Mono', monospace", fontSize: "11px", marginBottom: "6px" }}>
+                    <span style={{ textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                      <span style={{ display: "inline-block", width: "8px", height: "8px", background: c.color, marginRight: "6px", verticalAlign: "middle" }} />
+                      {c.cat}
+                    </span>
+                    <span style={{ color: colors.textDim }}>{fmt(c.total)} · {catPct.toFixed(0)}%</span>
+                  </div>
+                  <div style={{ height: "6px", background: colors.cardAlt, overflow: "hidden" }}>
+                    <div style={{ height: "100%", width: `${catPct}%`, background: c.color, transition: "width 0.5s" }} />
+                  </div>
+                </div>;
+              })}
+            </div>
+            <div style={{ borderTop: `1px solid ${colors.border}`, paddingTop: "10px", marginTop: "4px", display: "flex", justifyContent: "space-between", fontFamily: "'IBM Plex Mono', monospace", fontSize: "11px" }}>
+              <span style={{ color: colors.textDim, textTransform: "uppercase", letterSpacing: "0.1em", fontSize: "10px" }}>YTD Total</span>
+              <span style={{ color: colors.text, fontWeight: 500 }}>{fmt(yearTotal)}</span>
+            </div>
+          </div>;
+        })()}
       </div>
     </div>
     );
