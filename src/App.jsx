@@ -18,6 +18,7 @@ const defaultData = {
     { id: uid(), name: "Subscriptions", amount: 50, currency: "EUR", frequency: "monthly" },
   ],
   oneOffExpenses: [],
+  monthlyLedger: [], // Array of { ym: "YYYY-MM", income, fixedExp, sips, oneOffs, surplus, netWorth, closedAt }
   phases: [
     { id: 1, name: "Clear Credit Card", target: 2400, current: 2400, status: "complete", currency: "EUR", milestones: [] },
     { id: 2, name: "Build €10k Buffer", target: 10000, current: 1200, status: "active", currency: "EUR",
@@ -1228,11 +1229,51 @@ export default function App() {
 
     const now = new Date();
     const monthLabel = now.toLocaleDateString("en-US", { month: "short", year: "numeric" }).toUpperCase();
+    const currentYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const ledger = (data.monthlyLedger || []);
+    const ledgerByYm = Object.fromEntries(ledger.map(l => [l.ym, l]));
+
+    // Determine which month is "closable" — previous month (if not closed), or current month as fallback
+    const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const prevYm = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, "0")}`;
+    const prevMonthLabel = prevDate.toLocaleDateString("en-US", { month: "long", year: "numeric" }).toUpperCase();
+    const prevClosed = !!ledgerByYm[prevYm];
+    const currentClosed = !!ledgerByYm[currentYm];
+
+    const closeMonth = (ym, label) => {
+      if (!confirm(`Close ${label}?\n\nThis will save a snapshot of:\n· Income: ${fmt(calc.totalIncomeEur)}\n· Fixed Exp: ${fmt(calc.totalFixedEur)}\n· SIPs: ${fmt(calc.totalSipsEur)}\n· One-offs (${ym}): ${fmt(calc.thisMonthOneOffEur)}\n· Surplus: ${fmt(calc.surplus)}\n\nYou can edit this record later in the Month Ledger.`)) return;
+      // For closing prev month, use current live values (assumption: they reflect that period)
+      // For this-month one-offs, we filter by the specific ym being closed
+      const oneOffsForYm = (data.oneOffExpenses || [])
+        .filter(e => (e.date || "").slice(0, 7) === ym)
+        .reduce((s, e) => s + toEur(e.amount || 0, e.currency, rate, data.settings.eurToUsd || 1.08), 0);
+      const income = calc.totalIncomeEur;
+      const fixedExp = calc.totalFixedEur;
+      const sips = calc.totalSipsEur;
+      const oneOffs = oneOffsForYm;
+      const surplus = income - fixedExp - sips - oneOffs;
+      const newRecord = { ym, income, fixedExp, sips, oneOffs, surplus, netWorth: calc.netWorth, closedAt: new Date().toISOString() };
+      const updated = [...ledger.filter(l => l.ym !== ym), newRecord].sort((a, b) => a.ym.localeCompare(b.ym));
+      update("monthlyLedger", updated);
+    };
 
     return (
     <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 380px", gap: "14px" }} className="overview-grid">
       {/* LEFT COLUMN */}
       <div style={{ display: "flex", flexDirection: "column", gap: "14px", minWidth: 0 }}>
+        {/* Close Month Banner */}
+        {!prevClosed && <div style={{ padding: "12px 14px", background: `${colors.accent}15`, border: `1px solid ${colors.accent}50`, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
+          <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "11px", color: colors.accent, letterSpacing: "0.05em" }}>
+            <span style={{ marginRight: "6px" }}>&gt;</span>{prevMonthLabel} not yet closed · Review and commit the month's cash flow
+          </span>
+          <button style={{ ...s.btn, padding: "6px 14px", fontSize: "10px" }} onClick={() => closeMonth(prevYm, prevMonthLabel)}>CLOSE {prevMonthLabel}</button>
+        </div>}
+        {prevClosed && !currentClosed && <div style={{ padding: "8px 14px", background: colors.cardAlt, border: `1px solid ${colors.border}`, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
+          <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "10px", color: colors.textDim, letterSpacing: "0.1em", textTransform: "uppercase" }}>
+            <span style={{ color: colors.green, marginRight: "6px" }}>✓</span>{prevMonthLabel} closed. Current month ({monthLabel}) runs until end of month.
+          </span>
+          <button style={{ ...s.btnOutline, padding: "4px 10px", fontSize: "9px" }} onClick={() => closeMonth(currentYm, monthLabel)}>CLOSE {monthLabel} EARLY</button>
+        </div>}
         {/* Income */}
         <div style={s.card}>
           <div style={s.flex}>
@@ -1313,19 +1354,147 @@ export default function App() {
           <tbody>{data.oneOffExpenses.map(e => <tr key={e.id}><td style={s.td}><ECell value={e.name} onChange={v => updateItem("oneOffExpenses", e.id, "name", v)} /></td><td style={s.td}><ECell value={e.amount} type="number" onChange={v => updateItem("oneOffExpenses", e.id, "amount", v)} /></td><td style={s.td}><CurrSelect value={e.currency} onChange={v => updateItem("oneOffExpenses", e.id, "currency", v)} /></td><td style={s.td}><input type="date" style={s.input} value={e.date} onChange={ev => updateItem("oneOffExpenses", e.id, "date", ev.target.value)} /></td><td style={s.td}><button style={s.btnDanger} onClick={() => removeItem("oneOffExpenses", e.id)}>×</button></td></tr>)}</tbody></table>}
         </div>
 
-        {/* Cash Flow 12mo Placeholder */}
-        <div style={s.card}>
+        {/* Cash Flow 12mo Chart */}
+        {(() => {
+          // Build last 12 months (oldest → newest). Fill from ledger where available,
+          // and show the current month as provisional (dashed bars) based on live values.
+          const now = new Date();
+          const months = [];
+          for (let i = 11; i >= 0; i--) {
+            const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+            const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+            months.push({ ym, date: d });
+          }
+          const currentYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+          const ledgerByYm = {};
+          (data.monthlyLedger || []).forEach(l => { ledgerByYm[l.ym] = l; });
+
+          const rows = months.map(m => {
+            const l = ledgerByYm[m.ym];
+            if (l) {
+              return { ym: m.ym, date: m.date, income: l.income || 0, out: (l.fixedExp || 0) + (l.sips || 0) + (l.oneOffs || 0), provisional: false };
+            }
+            if (m.ym === currentYm) {
+              return { ym: m.ym, date: m.date, income: calc.totalIncomeEur, out: calc.totalFixedEur + calc.totalSipsEur + calc.thisMonthOneOffEur, provisional: true };
+            }
+            return { ym: m.ym, date: m.date, income: 0, out: 0, provisional: false, missing: true };
+          });
+
+          const hasAnyData = rows.some(r => r.income > 0 || r.out > 0);
+          if (!hasAnyData) {
+            return <div style={s.card}>
+              <div style={s.flex}>
+                <H2>Cash Flow · 12mo</H2>
+                <span style={{ fontSize: "10px", color: colors.textDim, letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'IBM Plex Mono', monospace" }}>Close months to build trend</span>
+              </div>
+              <div style={{ padding: "40px 20px", textAlign: "center", color: colors.textMuted, fontSize: "10px", letterSpacing: "0.1em", fontFamily: "'IBM Plex Mono', monospace", textTransform: "uppercase" }}>
+                <span style={{ color: colors.accent }}>&gt;</span> Use CLOSE MONTH button above to commit cash flow
+              </div>
+            </div>;
+          }
+
+          const W = 800, H = 200, padL = 40, padR = 10, padT = 20, padB = 30;
+          const iw = W - padL - padR, ih = H - padT - padB;
+          const max = Math.max(...rows.map(r => Math.max(r.income, r.out)));
+          const niceMax = max > 0 ? Math.ceil(max / 500) * 500 : 500;
+          const slot = iw / rows.length;
+          const bw = slot * 0.32;
+
+          // Compute surplus % as avg across populated months
+          const populated = rows.filter(r => r.income > 0);
+          const avgSurplusPct = populated.length ? populated.reduce((s, r) => s + (r.income > 0 ? ((r.income - r.out) / r.income) * 100 : 0), 0) / populated.length : 0;
+
+          return <div style={s.card}>
+            <div style={s.flex}>
+              <H2>Cash Flow · 12mo</H2>
+              <span style={{ fontSize: "10px", color: colors.textDim, letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'IBM Plex Mono', monospace" }}>
+                Surplus Avg {avgSurplusPct.toFixed(0)}%
+              </span>
+            </div>
+            <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" style={{ width: "100%", height: "auto", marginTop: "12px", display: "block" }}>
+              {[0, 0.25, 0.5, 0.75, 1].map((t, i) => {
+                const gy = padT + ih - t * ih;
+                return <g key={i}>
+                  <line x1={padL} x2={W - padR} y1={gy} y2={gy} stroke={colors.gridLine} strokeDasharray={i === 0 ? "0" : "2,4"} />
+                  <text x={padL - 6} y={gy + 3} fontFamily="'IBM Plex Mono',monospace" fontSize="9" fill={colors.textMuted} textAnchor="end">{niceMax * t >= 1000 ? `${((niceMax * t) / 1000).toFixed(1)}k` : (niceMax * t).toFixed(0)}</text>
+                </g>;
+              })}
+              {rows.map((r, i) => {
+                const cx = padL + slot * (i + 0.5);
+                const hi = niceMax > 0 ? (r.income / niceMax) * ih : 0;
+                const ho = niceMax > 0 ? (r.out / niceMax) * ih : 0;
+                const monthLabel = r.date.toLocaleDateString("en-US", { month: "short" }).charAt(0);
+                const opacity = r.provisional ? 0.45 : 1;
+                return <g key={i}>
+                  {r.income > 0 && <rect x={cx - bw - 1} y={padT + ih - hi} width={bw} height={hi} fill={colors.cyan} opacity={opacity} />}
+                  {r.out > 0 && <rect x={cx + 1} y={padT + ih - ho} width={bw} height={ho} fill={colors.red} opacity={opacity} />}
+                  <text x={cx} y={H - 8} fontFamily="'IBM Plex Mono',monospace" fontSize="9" fill={r.provisional ? colors.accent : colors.textMuted} textAnchor="middle">{monthLabel}</text>
+                </g>;
+              })}
+            </svg>
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: "12px", fontFamily: "'IBM Plex Mono', monospace", fontSize: "10px", letterSpacing: "0.1em", textTransform: "uppercase" }}>
+              <div style={{ display: "flex", gap: "20px" }}>
+                <span style={{ color: colors.textDim }}><span style={{ display: "inline-block", width: "10px", height: "10px", background: colors.cyan, marginRight: "6px", verticalAlign: "middle" }} />Income</span>
+                <span style={{ color: colors.textDim }}><span style={{ display: "inline-block", width: "10px", height: "10px", background: colors.red, marginRight: "6px", verticalAlign: "middle" }} />Outflow (Exp + SIPs + 1-off)</span>
+              </div>
+              <span style={{ color: colors.accent }}>Dim bar · Current month (not yet closed)</span>
+            </div>
+          </div>;
+        })()}
+
+        {/* Month Ledger */}
+        {ledger.length > 0 && <div style={s.card}>
           <div style={s.flex}>
-            <H2>Cash Flow · 12mo</H2>
+            <H2>Month Ledger</H2>
             <span style={{ fontSize: "10px", color: colors.textDim, letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'IBM Plex Mono', monospace" }}>
-              Fills as snapshots accumulate
+              {ledger.length} CLOSED
             </span>
           </div>
-          <div style={{ padding: "40px 20px", textAlign: "center", color: colors.textMuted, fontSize: "10px", letterSpacing: "0.1em", fontFamily: "'IBM Plex Mono', monospace", textTransform: "uppercase" }}>
-            Take a monthly snapshot to build the trend<br/>
-            <span style={{ fontSize: "9px", marginTop: "8px", display: "inline-block" }}>Current · IN {fmt(calc.totalIncomeEur)} · EX {fmt(calc.totalFixedEur)} · SURPLUS {fmt(calc.totalIncomeEur - calc.totalFixedEur)}</span>
-          </div>
-        </div>
+          <details>
+            <summary style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "10px", color: colors.textDim, letterSpacing: "0.1em", textTransform: "uppercase", cursor: "pointer", padding: "8px 0" }}>
+              <span style={{ color: colors.accent, marginRight: "6px" }}>&gt;</span>View All Closed Months
+            </summary>
+            <table style={{ ...s.table, marginTop: "8px" }}>
+              <thead>
+                <tr>
+                  <th style={s.th}>Month</th>
+                  <th style={{ ...s.th, textAlign: "right" }}>Income</th>
+                  <th style={{ ...s.th, textAlign: "right" }}>Fixed</th>
+                  <th style={{ ...s.th, textAlign: "right" }}>SIPs</th>
+                  <th style={{ ...s.th, textAlign: "right" }}>1-offs</th>
+                  <th style={{ ...s.th, textAlign: "right" }}>Surplus</th>
+                  <th style={s.th}></th>
+                </tr>
+              </thead>
+              <tbody>{ledger.slice().reverse().map(l => {
+                const mDate = new Date(l.ym + "-01");
+                const mLabel = mDate.toLocaleDateString("en-US", { month: "short", year: "2-digit" }).toUpperCase();
+                const updateLedger = (field, val) => {
+                  const v = typeof val === "number" ? val : parseFloat(val) || 0;
+                  const updated = ledger.map(x => {
+                    if (x.ym !== l.ym) return x;
+                    const nx = { ...x, [field]: v };
+                    nx.surplus = (nx.income || 0) - (nx.fixedExp || 0) - (nx.sips || 0) - (nx.oneOffs || 0);
+                    return nx;
+                  });
+                  update("monthlyLedger", updated);
+                };
+                return <tr key={l.ym}>
+                  <td style={{ ...s.td, color: colors.accent, fontFamily: "'IBM Plex Mono', monospace" }}>{mLabel}</td>
+                  <td style={{ ...s.td, textAlign: "right" }}><ECell value={Math.round(l.income || 0)} type="number" onChange={v => updateLedger("income", v)} style={{ color: colors.green, textAlign: "right" }} /></td>
+                  <td style={{ ...s.td, textAlign: "right" }}><ECell value={Math.round(l.fixedExp || 0)} type="number" onChange={v => updateLedger("fixedExp", v)} style={{ color: colors.red, textAlign: "right" }} /></td>
+                  <td style={{ ...s.td, textAlign: "right" }}><ECell value={Math.round(l.sips || 0)} type="number" onChange={v => updateLedger("sips", v)} style={{ color: colors.red, textAlign: "right" }} /></td>
+                  <td style={{ ...s.td, textAlign: "right" }}><ECell value={Math.round(l.oneOffs || 0)} type="number" onChange={v => updateLedger("oneOffs", v)} style={{ color: colors.red, textAlign: "right" }} /></td>
+                  <td style={{ ...s.td, textAlign: "right", color: (l.surplus || 0) >= 0 ? colors.accent : colors.red }}>{fmt(l.surplus || 0)}</td>
+                  <td style={s.td}><button style={s.btnDanger} onClick={() => {
+                    if (!confirm(`Delete (reopen) ${mLabel}?`)) return;
+                    update("monthlyLedger", ledger.filter(x => x.ym !== l.ym));
+                  }}>×</button></td>
+                </tr>;
+              })}</tbody>
+            </table>
+          </details>
+        </div>}
       </div>
 
       {/* RIGHT RAIL */}
