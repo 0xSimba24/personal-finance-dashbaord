@@ -227,7 +227,7 @@ export function CashFlowBarChart({ data: chartData, height = 220 }) {
 
   return (
     <ResponsiveContainer width="100%" height={height}>
-      <BarChart data={chartData} margin={{ top: 5, right: 5, bottom: 5, left: 15 }}>
+      <BarChart data={chartData} margin={{ top: 5, right: 5, bottom: 5, left: 15 }} barCategoryGap="40%">
         <CartesianGrid stroke={colors.gridLine} strokeDasharray="2 4" vertical={false} />
         <XAxis dataKey="label" tick={{ fontSize: 9, fill: colors.textMuted, fontFamily: "'IBM Plex Mono', monospace" }} axisLine={false} tickLine={false} />
         <YAxis tick={{ fontSize: 9, fill: colors.textMuted, fontFamily: "'IBM Plex Mono', monospace" }} axisLine={false} tickLine={false} width={55} tickFormatter={v => v >= 1000 ? `${(v/1000).toFixed(1)}k` : v.toFixed(0)} />
@@ -261,7 +261,7 @@ export function AmortBarChart({ data: chartData, height = 220 }) {
 
   return (
     <ResponsiveContainer width="100%" height={height}>
-      <BarChart data={chartData} margin={{ top: 5, right: 5, bottom: 5, left: 15 }}>
+      <BarChart data={chartData} margin={{ top: 5, right: 5, bottom: 5, left: 15 }} barCategoryGap="40%">
         <CartesianGrid stroke={colors.gridLine} strokeDasharray="2 4" vertical={false} />
         <XAxis dataKey="label" tick={{ fontSize: 9, fill: colors.textMuted, fontFamily: "'IBM Plex Mono', monospace" }} axisLine={false} tickLine={false} />
         <YAxis tick={{ fontSize: 9, fill: colors.textMuted, fontFamily: "'IBM Plex Mono', monospace" }} axisLine={false} tickLine={false} width={55} tickFormatter={v => v >= 1000 ? `${(v/1000).toFixed(1)}k` : v.toFixed(0)} />
