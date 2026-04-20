@@ -1257,6 +1257,13 @@ export default function App() {
       update("monthlyLedger", updated);
     };
 
+    const skipMonth = (ym, label) => {
+      if (!confirm(`Skip ${label}?\n\nThis marks the month as "no data available" — useful for months before you started tracking. It won't appear in the chart and you won't be prompted to close it again.\n\nYou can undo this from the Month Ledger below.`)) return;
+      const newRecord = { ym, skipped: true, closedAt: new Date().toISOString() };
+      const updated = [...ledger.filter(l => l.ym !== ym), newRecord].sort((a, b) => a.ym.localeCompare(b.ym));
+      update("monthlyLedger", updated);
+    };
+
     return (
     <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 380px", gap: "14px" }} className="overview-grid">
       {/* LEFT COLUMN */}
@@ -1264,13 +1271,16 @@ export default function App() {
         {/* Close Month Banner */}
         {!prevClosed && <div style={{ padding: "12px 14px", background: `${colors.accent}15`, border: `1px solid ${colors.accent}50`, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
           <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "11px", color: colors.accent, letterSpacing: "0.05em" }}>
-            <span style={{ marginRight: "6px" }}>&gt;</span>{prevMonthLabel} not yet closed · Review and commit the month's cash flow
+            <span style={{ marginRight: "6px" }}>&gt;</span>{prevMonthLabel} not yet closed · Review and commit, or skip if you weren't tracking then
           </span>
-          <button style={{ ...s.btn, padding: "6px 14px", fontSize: "10px" }} onClick={() => closeMonth(prevYm, prevMonthLabel)}>CLOSE {prevMonthLabel}</button>
+          <div style={{ display: "flex", gap: "8px" }}>
+            <button style={{ ...s.btnOutline, padding: "6px 12px", fontSize: "10px" }} onClick={() => skipMonth(prevYm, prevMonthLabel)}>SKIP</button>
+            <button style={{ ...s.btn, padding: "6px 14px", fontSize: "10px" }} onClick={() => closeMonth(prevYm, prevMonthLabel)}>CLOSE {prevMonthLabel}</button>
+          </div>
         </div>}
         {prevClosed && !currentClosed && <div style={{ padding: "8px 14px", background: colors.cardAlt, border: `1px solid ${colors.border}`, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
           <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "10px", color: colors.textDim, letterSpacing: "0.1em", textTransform: "uppercase" }}>
-            <span style={{ color: colors.green, marginRight: "6px" }}>✓</span>{prevMonthLabel} closed. Current month ({monthLabel}) runs until end of month.
+            <span style={{ color: colors.green, marginRight: "6px" }}>✓</span>{prevMonthLabel} {ledgerByYm[prevYm]?.skipped ? "skipped" : "closed"}. Current month ({monthLabel}) runs until end of month.
           </span>
           <button style={{ ...s.btnOutline, padding: "4px 10px", fontSize: "9px" }} onClick={() => closeMonth(currentYm, monthLabel)}>CLOSE {monthLabel} EARLY</button>
         </div>}
@@ -1371,6 +1381,9 @@ export default function App() {
 
           const rows = months.map(m => {
             const l = ledgerByYm[m.ym];
+            if (l && l.skipped) {
+              return { ym: m.ym, date: m.date, income: 0, out: 0, provisional: false, skipped: true };
+            }
             if (l) {
               return { ym: m.ym, date: m.date, income: l.income || 0, out: (l.fixedExp || 0) + (l.sips || 0) + (l.oneOffs || 0), provisional: false };
             }
@@ -1469,6 +1482,16 @@ export default function App() {
               <tbody>{ledger.slice().reverse().map(l => {
                 const mDate = new Date(l.ym + "-01");
                 const mLabel = mDate.toLocaleDateString("en-US", { month: "short", year: "2-digit" }).toUpperCase();
+                if (l.skipped) {
+                  return <tr key={l.ym}>
+                    <td style={{ ...s.td, color: colors.textMuted, fontFamily: "'IBM Plex Mono', monospace" }}>{mLabel}</td>
+                    <td colSpan={5} style={{ ...s.td, color: colors.textMuted, fontSize: "10px", letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'IBM Plex Mono', monospace" }}>— Skipped (no data tracked) —</td>
+                    <td style={s.td}><button style={s.btnDanger} onClick={() => {
+                      if (!confirm(`Remove ${mLabel} skip marker? You'll be prompted to close it again.`)) return;
+                      update("monthlyLedger", ledger.filter(x => x.ym !== l.ym));
+                    }}>×</button></td>
+                  </tr>;
+                }
                 const updateLedger = (field, val) => {
                   const v = typeof val === "number" ? val : parseFloat(val) || 0;
                   const updated = ledger.map(x => {
