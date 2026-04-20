@@ -178,16 +178,47 @@ export function CashFlowBarChart({ data: chartData, height = 220 }) {
   const anyData = chartData.some(d => d.income > 0 || d.fixed > 0 || d.sips > 0 || d.oneOffs > 0);
   if (!anyData) return null;
 
-  // Render opacity: non-hovered segments fade when any is hovered
-  const op = (key) => hoverKey == null ? 1 : (hoverKey === key ? 1 : 0.25);
+  // Red opacity ladder for outflows, green for surplus
+  const palette = {
+    fixed:   { fill: colors.red, baseOp: 0.90 },
+    sips:    { fill: colors.red, baseOp: 0.60 },
+    oneOffs: { fill: colors.red, baseOp: 0.35 },
+    surplus: { fill: colors.green, baseOp: 1.00 },
+    deficit: { fill: colors.red, baseOp: 1.00 },
+  };
 
-  // Custom tooltip: if a segment is hovered, show only that segment's value
+  // Opacity multiplier: non-hovered segments fade when any is hovered
+  const op = (key) => {
+    const base = palette[key]?.baseOp ?? 1;
+    if (hoverKey == null) return base;
+    return hoverKey === key ? base : base * 0.25;
+  };
+
+  // Custom tooltip
   const CustomTip = ({ active, payload, label }) => {
     if (!active || !payload || !payload.length) return null;
-    const items = hoverKey ? payload.filter(p => p.dataKey === hoverKey) : payload.filter(p => p.value > 0);
+    // When segment is isolated → show only that segment
+    if (hoverKey) {
+      const items = payload.filter(p => p.dataKey === hoverKey && p.value > 0);
+      if (items.length === 0) return null;
+      return <div style={{ background: "#000", border: `1px solid ${colors.accent}`, borderRadius: 0, fontSize: "11px", fontFamily: "'IBM Plex Mono', monospace", letterSpacing: "0.05em", padding: "8px 10px" }}>
+        <div style={{ color: colors.accent, textTransform: "uppercase", fontSize: "10px", letterSpacing: "0.14em", marginBottom: "4px" }}>{label}</div>
+        {items.map((it, i) => <div key={i} style={{ color: it.color, padding: "1px 0", display: "flex", justifyContent: "space-between", gap: "12px" }}>
+          <span>{it.name}</span><span>{fmt(it.value, "EUR")}</span>
+        </div>)}
+      </div>;
+    }
+    // Default: show full breakdown with total income line at top
+    const items = payload.filter(p => p.value > 0);
     if (items.length === 0) return null;
-    return <div style={{ background: "#000", border: `1px solid ${colors.accent}`, borderRadius: 0, fontSize: "11px", fontFamily: "'IBM Plex Mono', monospace", letterSpacing: "0.05em", padding: "8px 10px" }}>
-      <div style={{ color: colors.accent, textTransform: "uppercase", fontSize: "10px", letterSpacing: "0.14em", marginBottom: "4px" }}>{label}</div>
+    const row = payload[0]?.payload || {};
+    const totalIncome = row.income || 0;
+    return <div style={{ background: "#000", border: `1px solid ${colors.accent}`, borderRadius: 0, fontSize: "11px", fontFamily: "'IBM Plex Mono', monospace", letterSpacing: "0.05em", padding: "8px 10px", minWidth: "180px" }}>
+      <div style={{ color: colors.accent, textTransform: "uppercase", fontSize: "10px", letterSpacing: "0.14em", marginBottom: "6px" }}>{label}</div>
+      {totalIncome > 0 && <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", paddingBottom: "6px", marginBottom: "4px", borderBottom: `1px solid ${colors.border}`, color: colors.text, fontWeight: 500 }}>
+        <span style={{ textTransform: "uppercase", fontSize: "10px", letterSpacing: "0.1em" }}>Income</span>
+        <span style={{ color: colors.accent }}>{fmt(totalIncome, "EUR")}</span>
+      </div>}
       {items.map((it, i) => <div key={i} style={{ color: it.color, padding: "1px 0", display: "flex", justifyContent: "space-between", gap: "12px" }}>
         <span>{it.name}</span><span>{fmt(it.value, "EUR")}</span>
       </div>)}
@@ -201,11 +232,11 @@ export function CashFlowBarChart({ data: chartData, height = 220 }) {
         <XAxis dataKey="label" tick={{ fontSize: 9, fill: colors.textMuted, fontFamily: "'IBM Plex Mono', monospace" }} axisLine={false} tickLine={false} />
         <YAxis tick={{ fontSize: 9, fill: colors.textMuted, fontFamily: "'IBM Plex Mono', monospace" }} axisLine={false} tickLine={false} width={55} tickFormatter={v => v >= 1000 ? `${(v/1000).toFixed(1)}k` : v.toFixed(0)} />
         <Tooltip content={<CustomTip />} cursor={{ fill: "rgba(245,166,35,0.05)" }} />
-        <Bar dataKey="fixed" stackId="cf" fill={colors.red} name="Fixed Exp" fillOpacity={op("fixed")} onMouseEnter={() => setHoverKey("fixed")} onMouseLeave={() => setHoverKey(null)} />
-        <Bar dataKey="sips" stackId="cf" fill="#d67ab5" name="SIPs" fillOpacity={op("sips")} onMouseEnter={() => setHoverKey("sips")} onMouseLeave={() => setHoverKey(null)} />
-        <Bar dataKey="oneOffs" stackId="cf" fill={colors.violet} name="One-offs" fillOpacity={op("oneOffs")} onMouseEnter={() => setHoverKey("oneOffs")} onMouseLeave={() => setHoverKey(null)} />
-        <Bar dataKey="surplus" stackId="cf" fill={colors.green} name="Surplus" fillOpacity={op("surplus")} onMouseEnter={() => setHoverKey("surplus")} onMouseLeave={() => setHoverKey(null)} />
-        <Bar dataKey="deficit" stackId="cf" fill={colors.red} fillOpacity={hoverKey == null ? 0.5 : (hoverKey === "deficit" ? 0.7 : 0.15)} stroke={colors.red} strokeWidth={1} name="Deficit" onMouseEnter={() => setHoverKey("deficit")} onMouseLeave={() => setHoverKey(null)} />
+        <Bar dataKey="fixed" stackId="cf" fill={palette.fixed.fill} name="Fixed Exp" fillOpacity={op("fixed")} onMouseEnter={() => setHoverKey("fixed")} onMouseLeave={() => setHoverKey(null)} />
+        <Bar dataKey="sips" stackId="cf" fill={palette.sips.fill} name="SIPs" fillOpacity={op("sips")} onMouseEnter={() => setHoverKey("sips")} onMouseLeave={() => setHoverKey(null)} />
+        <Bar dataKey="oneOffs" stackId="cf" fill={palette.oneOffs.fill} name="One-offs" fillOpacity={op("oneOffs")} onMouseEnter={() => setHoverKey("oneOffs")} onMouseLeave={() => setHoverKey(null)} />
+        <Bar dataKey="surplus" stackId="cf" fill={palette.surplus.fill} name="Surplus" fillOpacity={op("surplus")} onMouseEnter={() => setHoverKey("surplus")} onMouseLeave={() => setHoverKey(null)} />
+        <Bar dataKey="deficit" stackId="cf" fill={palette.deficit.fill} name="Deficit" fillOpacity={op("deficit")} stroke={colors.accent} strokeWidth={1} onMouseEnter={() => setHoverKey("deficit")} onMouseLeave={() => setHoverKey(null)} />
       </BarChart>
     </ResponsiveContainer>
   );

@@ -1432,9 +1432,9 @@ export default function App() {
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", marginTop: "12px", fontFamily: "'IBM Plex Mono', monospace", fontSize: "10px", letterSpacing: "0.1em", textTransform: "uppercase", flexWrap: "wrap", gap: "8px" }}>
               <div style={{ display: "flex", gap: "14px", flexWrap: "wrap" }}>
-                <span style={{ color: colors.textDim }}><span style={{ display: "inline-block", width: "10px", height: "10px", background: colors.red, marginRight: "6px", verticalAlign: "middle" }} />Fixed</span>
-                <span style={{ color: colors.textDim }}><span style={{ display: "inline-block", width: "10px", height: "10px", background: "#d67ab5", marginRight: "6px", verticalAlign: "middle" }} />SIPs</span>
-                <span style={{ color: colors.textDim }}><span style={{ display: "inline-block", width: "10px", height: "10px", background: colors.violet, marginRight: "6px", verticalAlign: "middle" }} />1-offs</span>
+                <span style={{ color: colors.textDim }}><span style={{ display: "inline-block", width: "10px", height: "10px", background: colors.red, opacity: 0.9, marginRight: "6px", verticalAlign: "middle" }} />Fixed</span>
+                <span style={{ color: colors.textDim }}><span style={{ display: "inline-block", width: "10px", height: "10px", background: colors.red, opacity: 0.6, marginRight: "6px", verticalAlign: "middle" }} />SIPs</span>
+                <span style={{ color: colors.textDim }}><span style={{ display: "inline-block", width: "10px", height: "10px", background: colors.red, opacity: 0.35, marginRight: "6px", verticalAlign: "middle" }} />1-offs</span>
                 <span style={{ color: colors.textDim }}><span style={{ display: "inline-block", width: "10px", height: "10px", background: colors.green, marginRight: "6px", verticalAlign: "middle" }} />Surplus</span>
               </div>
               <span style={{ color: colors.textDim }}>Bar total = Income · Green cap = Saved · Red overflow = Deficit</span>
