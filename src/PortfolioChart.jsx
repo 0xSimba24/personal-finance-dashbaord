@@ -41,11 +41,19 @@ export default function PortfolioChart({ history, title, color = colors.accent, 
     const cutoff = Date.now() - (r.days * 24 * 60 * 60 * 1000);
     const filtered = history.filter(h => new Date(h.date).getTime() >= cutoff);
     const data = filtered.length >= 2 ? filtered : history;
-    return data.map(h => ({
-      date: new Date(h.date).toLocaleDateString("en-GB", { day: "numeric", month: "short" }),
-      value: h.value,
-      rawDate: h.date,
-    }));
+    // Deduplicate: keep only the last entry per date
+    const byDate = {};
+    data.forEach(h => {
+      const dateKey = h.date?.slice(0, 10) || h.date;
+      byDate[dateKey] = h;
+    });
+    return Object.values(byDate)
+      .sort((a, b) => new Date(a.date) - new Date(b.date))
+      .map(h => ({
+        date: new Date(h.date).toLocaleDateString("en-GB", { day: "numeric", month: "short" }),
+        value: h.value,
+        rawDate: h.date,
+      }));
   }, [history, range]);
 
   if (!history || history.length < 2) {
