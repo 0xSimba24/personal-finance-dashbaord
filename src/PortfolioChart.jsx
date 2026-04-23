@@ -31,7 +31,7 @@ const rangeBtn = (active) => ({
   color: active ? colors.bg : colors.textDim,
 });
 
-export default function PortfolioChart({ history, title, color = colors.accent, currency = "EUR", height = 200 }) {
+export default function PortfolioChart({ history, title, color = colors.accent, currency = "EUR", height = 200, liveValue = null }) {
   const [range, setRange] = useState("ALL");
   const gradId = useMemo(() => `grad-${Math.random().toString(36).slice(2, 8)}`, []);
 
@@ -41,12 +41,19 @@ export default function PortfolioChart({ history, title, color = colors.accent, 
     const cutoff = Date.now() - (r.days * 24 * 60 * 60 * 1000);
     const filtered = history.filter(h => new Date(h.date).getTime() >= cutoff);
     const data = filtered.length >= 2 ? filtered : history;
-    // Deduplicate: keep only the last entry per date
+    // Deduplicate: keep only the last entry per date (using local date to avoid timezone issues)
     const byDate = {};
     data.forEach(h => {
-      const dateKey = h.date?.slice(0, 10) || h.date;
+      const d = new Date(h.date);
+      const dateKey = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
       byDate[dateKey] = h;
     });
+    // If liveValue provided, override/append today's entry with the live calculated value
+    if (liveValue != null) {
+      const now = new Date();
+      const todayKey = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")}`;
+      byDate[todayKey] = { date: now.toISOString(), value: liveValue };
+    }
     return Object.values(byDate)
       .sort((a, b) => new Date(a.date) - new Date(b.date))
       .map(h => ({
@@ -54,7 +61,7 @@ export default function PortfolioChart({ history, title, color = colors.accent, 
         value: h.value,
         rawDate: h.date,
       }));
-  }, [history, range]);
+  }, [history, range, liveValue]);
 
   if (!history || history.length < 2) {
     return (
