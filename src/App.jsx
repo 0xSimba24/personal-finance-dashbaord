@@ -4,6 +4,7 @@ import PortfolioChart, { MultiLineChart, CashFlowBarChart, AmortBarChart } from 
 import DonutChart from "./DonutChart.jsx";
 
 const uid = () => Math.random().toString(36).slice(2, 9);
+const localDate = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
 const STORE_KEY = "fin-dashboard-v3";
 
 const defaultData = {
@@ -442,7 +443,7 @@ export default function App() {
     const totalFixedEur = data.fixedExpenses.reduce((s, e) => s + eur(e.frequency === "annual" ? e.amount / 12 : e.amount, e.currency), 0);
     const totalSipsEur = data.sips.reduce((s, i) => s + eur(i.amount, i.currency), 0);
     // One-off expenses: all-time total + current month total
-    const nowYM = new Date().toISOString().slice(0, 7);
+    const nowYM = localDate().slice(0, 7);
     const totalOneOffEur = (data.oneOffExpenses || []).reduce((s, e) => s + eur(e.amount || 0, e.currency), 0);
     const thisMonthOneOffEur = (data.oneOffExpenses || [])
       .filter(e => (e.date || "").slice(0, 7) === nowYM)
@@ -524,7 +525,7 @@ export default function App() {
   const takeSnapshot = useCallback(() => {
     if (!data || !calc) return;
     update("snapshots", [...data.snapshots, {
-      date: new Date().toISOString().slice(0, 10), netWorth: calc.netWorth, liquidNW: calc.liquidNW,
+      date: localDate(), netWorth: calc.netWorth, liquidNW: calc.liquidNW,
       illiquidNW: calc.illiquidNW, grossAssets: calc.grossAssets, liabilities: calc.totalLiabEur, phase: data.settings.currentPhase,
     }]);
   }, [data, calc, update]);
@@ -536,7 +537,7 @@ export default function App() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `finance-dashboard-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `finance-dashboard-${localDate()}.json`;
     a.click();
     URL.revokeObjectURL(url);
     save(updated);
@@ -1364,7 +1365,7 @@ export default function App() {
               {data.oneOffExpenses.length > 0 && <span style={{ fontSize: "10px", color: colors.textDim, letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'IBM Plex Mono', monospace" }}>
                 This Month: <span style={{ color: colors.red }}>{fmt(calc.thisMonthOneOffEur)}</span> · Total: <span style={{ color: colors.text }}>{fmt(calc.totalOneOffEur)}</span>
               </span>}
-              <button style={s.btn} onClick={() => addItem("oneOffExpenses", { name: "Expense", amount: 0, currency: "EUR", date: new Date().toISOString().slice(0, 10), category: "Other" })}>+ ADD</button>
+              <button style={s.btn} onClick={() => addItem("oneOffExpenses", { name: "Expense", amount: 0, currency: "EUR", date: localDate(), category: "Other" })}>+ ADD</button>
             </div>
           </div>
           {data.oneOffExpenses.length === 0 ? <div style={{ fontSize: "10px", color: colors.textMuted, padding: "16px 0", textAlign: "center", letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'IBM Plex Mono', monospace" }}>No one-off expenses</div> :
@@ -2148,7 +2149,7 @@ export default function App() {
                       <span style={{ color: colors.accent, marginRight: "6px" }}>&gt;</span>Special Payments {spTotal > 0 && <span style={{ color: colors.green }}>({fmt(spTotal, l.currency)})</span>}
                     </div>
                     <button style={{ ...s.btnOutline, padding: "3px 8px", fontSize: "9px" }} onClick={() => {
-                      const sp = [...(l.specialPayments || []), { id: uid(), date: new Date().toISOString().slice(0, 10), amount: 0, note: "" }];
+                      const sp = [...(l.specialPayments || []), { id: uid(), date: localDate(), amount: 0, note: "" }];
                       updateItem("liabilities", l.id, "specialPayments", sp);
                     }}>+ ADD</button>
                   </div>
