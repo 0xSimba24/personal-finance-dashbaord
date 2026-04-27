@@ -445,7 +445,7 @@ export default function App() {
     // One-off expenses: all-time total + active month total
     // Active month = calendar current month, OR next month if current is already closed
     const calendarYm = localDate().slice(0, 7);
-    const isClosedYm = (ym) => (d.monthlyLedger || []).some(l => l.ym === ym);
+    const isClosedYm = (ym) => (data.monthlyLedger || []).some(l => l.ym === ym);
     let activeYm = calendarYm;
     if (isClosedYm(calendarYm)) {
       const dt = new Date();
