@@ -442,11 +442,19 @@ export default function App() {
     const totalIncomeEur = data.income.reduce((s, i) => s + eur(i.frequency === "annual" ? i.amount / 12 : i.amount, i.currency), 0);
     const totalFixedEur = data.fixedExpenses.reduce((s, e) => s + eur(e.frequency === "annual" ? e.amount / 12 : e.amount, e.currency), 0);
     const totalSipsEur = data.sips.reduce((s, i) => s + eur(i.amount, i.currency), 0);
-    // One-off expenses: all-time total + current month total
-    const nowYM = localDate().slice(0, 7);
+    // One-off expenses: all-time total + active month total
+    // Active month = calendar current month, OR next month if current is already closed
+    const calendarYm = localDate().slice(0, 7);
+    const isClosedYm = (ym) => (d.monthlyLedger || []).some(l => l.ym === ym);
+    let activeYm = calendarYm;
+    if (isClosedYm(calendarYm)) {
+      const dt = new Date();
+      dt.setMonth(dt.getMonth() + 1);
+      activeYm = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}`;
+    }
     const totalOneOffEur = (data.oneOffExpenses || []).reduce((s, e) => s + eur(e.amount || 0, e.currency), 0);
     const thisMonthOneOffEur = (data.oneOffExpenses || [])
-      .filter(e => (e.date || "").slice(0, 7) === nowYM)
+      .filter(e => (e.date || "").slice(0, 7) === activeYm)
       .reduce((s, e) => s + eur(e.amount || 0, e.currency), 0);
     // Surplus now subtracts this month's one-offs too
     const surplus = totalIncomeEur - totalFixedEur - totalSipsEur - thisMonthOneOffEur;
@@ -489,7 +497,7 @@ export default function App() {
     const liquidNW = liquidAssets;
     const illiquidNW = illiquidAssets;
 
-    return { rate, totalIncomeEur, totalFixedEur, totalSipsEur, totalOneOffEur, thisMonthOneOffEur, surplus, totalAllocEur, unallocated, mfValue, eqValue, cashValue, cryptoValue, propValue, esopValue, grossAssets, liquidAssets, illiquidAssets, totalLiabEur, netWorth, liquidNW, illiquidNW };
+    return { rate, activeYm, totalIncomeEur, totalFixedEur, totalSipsEur, totalOneOffEur, thisMonthOneOffEur, surplus, totalAllocEur, unallocated, mfValue, eqValue, cashValue, cryptoValue, propValue, esopValue, grossAssets, liquidAssets, illiquidAssets, totalLiabEur, netWorth, liquidNW, illiquidNW };
   }, [data]);
 
   // Compute phase current value — auto-sum linked holdings or use manual value
@@ -1237,17 +1245,20 @@ export default function App() {
       .sort((a, b) => b.total - a.total);
 
     const now = new Date();
-    const monthLabel = now.toLocaleDateString("en-US", { month: "short", year: "numeric" }).toUpperCase();
-    const currentYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const activeYm = calc.activeYm;
+    const activeDate = new Date(activeYm + "-01");
+    const monthLabel = activeDate.toLocaleDateString("en-US", { month: "short", year: "numeric" }).toUpperCase();
+    const calendarYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
     const ledger = (data.monthlyLedger || []);
     const ledgerByYm = Object.fromEntries(ledger.map(l => [l.ym, l]));
 
-    // Determine which month is "closable" — previous month (if not closed), or current month as fallback
+    // Determine which month is "closable" — previous calendar month (if not closed), or current calendar month as fallback
     const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const prevYm = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, "0")}`;
     const prevMonthLabel = prevDate.toLocaleDateString("en-US", { month: "long", year: "numeric" }).toUpperCase();
+    const calendarMonthLabel = now.toLocaleDateString("en-US", { month: "short", year: "numeric" }).toUpperCase();
     const prevClosed = !!ledgerByYm[prevYm];
-    const currentClosed = !!ledgerByYm[currentYm];
+    const currentClosed = !!ledgerByYm[calendarYm];
 
     const closeMonth = (ym, label) => {
       if (!confirm(`Close ${label}?\n\nThis will save a snapshot of:\n· Income: ${fmt(calc.totalIncomeEur)}\n· Fixed Exp: ${fmt(calc.totalFixedEur)}\n· SIPs: ${fmt(calc.totalSipsEur)}\n· One-offs (${ym}): ${fmt(calc.thisMonthOneOffEur)}\n· Surplus: ${fmt(calc.surplus)}\n\nYou can edit this record later in the Month Ledger.`)) return;
@@ -1287,11 +1298,16 @@ export default function App() {
             <button style={{ ...s.btn, padding: "6px 14px", fontSize: "10px" }} onClick={() => closeMonth(prevYm, prevMonthLabel)}>CLOSE {prevMonthLabel}</button>
           </div>
         </div>}
+        {prevClosed && currentClosed && <div style={{ padding: "8px 14px", background: colors.cardAlt, border: `1px solid ${colors.border}`, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
+          <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "10px", color: colors.textDim, letterSpacing: "0.1em", textTransform: "uppercase" }}>
+            <span style={{ color: colors.green, marginRight: "6px" }}>✓</span>{calendarMonthLabel} closed early · Now tracking {monthLabel}
+          </span>
+        </div>}
         {prevClosed && !currentClosed && <div style={{ padding: "8px 14px", background: colors.cardAlt, border: `1px solid ${colors.border}`, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
           <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "10px", color: colors.textDim, letterSpacing: "0.1em", textTransform: "uppercase" }}>
-            <span style={{ color: colors.green, marginRight: "6px" }}>✓</span>{prevMonthLabel} {ledgerByYm[prevYm]?.skipped ? "skipped" : "closed"}. Current month ({monthLabel}) runs until end of month.
+            <span style={{ color: colors.green, marginRight: "6px" }}>✓</span>{prevMonthLabel} {ledgerByYm[prevYm]?.skipped ? "skipped" : "closed"}. Current month ({calendarMonthLabel}) runs until end of month.
           </span>
-          <button style={{ ...s.btnOutline, padding: "4px 10px", fontSize: "9px" }} onClick={() => closeMonth(currentYm, monthLabel)}>CLOSE {monthLabel} EARLY</button>
+          <button style={{ ...s.btnOutline, padding: "4px 10px", fontSize: "9px" }} onClick={() => closeMonth(calendarYm, calendarMonthLabel)}>CLOSE {calendarMonthLabel} EARLY</button>
         </div>}
         {/* Income */}
         <div style={s.card}>
@@ -1389,14 +1405,15 @@ export default function App() {
 
         {/* Cash Flow 12mo Chart */}
         {(() => {
-          const now = new Date();
+          // Window ends at activeYm (calendar month, or next month if calendar is closed)
+          const activeDate = new Date(calc.activeYm + "-01");
           const months = [];
           for (let i = 11; i >= 0; i--) {
-            const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+            const d = new Date(activeDate.getFullYear(), activeDate.getMonth() - i, 1);
             const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
             months.push({ ym, date: d });
           }
-          const currentYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+          const currentYm = calc.activeYm;
           const ledgerByYm = {};
           (data.monthlyLedger || []).forEach(l => { ledgerByYm[l.ym] = l; });
 
