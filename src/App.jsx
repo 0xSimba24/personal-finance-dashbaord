@@ -2494,6 +2494,11 @@ export default function App() {
       update("realizedSales", updated);
     };
 
+    const updateSaleFields = (id, fields) => {
+      const updated = sales.map(x => x.id === id ? { ...x, ...fields } : x);
+      update("realizedSales", updated);
+    };
+
     // When user picks an asset from the dropdown, prefill class, costBasis, currencies
     const applyAssetSelection = (id, holdingKey) => {
       if (!holdingKey) {
@@ -2645,12 +2650,12 @@ export default function App() {
                   </td>
                   <td style={{ ...s.td, textAlign: "right" }}><ECell value={sale.qtySold || 0} type="number" onChange={v => updateSale(sale.id, "qtySold", v)} /></td>
                   <td style={{ ...s.td, textAlign: "right" }}><ECell value={sale.salePrice || 0} type="number" onChange={v => updateSale(sale.id, "salePrice", v)} /></td>
-                  <td style={s.td}><CurrSelect value={sale.saleCurrency || "EUR"} onChange={v => { updateSale(sale.id, "saleCurrency", v); updateSale(sale.id, "saleFxToEur", ccyToEurRate(v)); }} /></td>
+                  <td style={s.td}><CurrSelect value={sale.saleCurrency || "EUR"} onChange={v => updateSaleFields(sale.id, { saleCurrency: v, saleFxToEur: ccyToEurRate(v) })} /></td>
                   <td style={{ ...s.td, textAlign: "right" }}>
                     <ECell value={Number(saleFxDisplay).toFixed(6)} type="number" onChange={v => updateSale(sale.id, "saleFxToEur", parseFloat(v) || 0)} style={{ width: "80px", textAlign: "right" }} />
                   </td>
                   <td style={{ ...s.td, textAlign: "right" }}><ECell value={sale.costBasis || 0} type="number" onChange={v => updateSale(sale.id, "costBasis", v)} /></td>
-                  <td style={s.td}><CurrSelect value={sale.costCurrency || sale.saleCurrency || "EUR"} onChange={v => { updateSale(sale.id, "costCurrency", v); updateSale(sale.id, "costFxToEur", ccyToEurRate(v)); }} /></td>
+                  <td style={s.td}><CurrSelect value={sale.costCurrency || sale.saleCurrency || "EUR"} onChange={v => updateSaleFields(sale.id, { costCurrency: v, costFxToEur: ccyToEurRate(v) })} /></td>
                   <td style={{ ...s.td, textAlign: "right" }}>
                     <ECell value={Number(costFxDisplay).toFixed(6)} type="number" onChange={v => updateSale(sale.id, "costFxToEur", parseFloat(v) || 0)} style={{ width: "80px", textAlign: "right" }} />
                   </td>
