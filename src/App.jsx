@@ -2664,7 +2664,7 @@ export default function App() {
                   <td style={{ ...s.td, textAlign: "right", color: g.gainEur >= 0 ? colors.green : colors.red, fontFamily: "'IBM Plex Mono', monospace", fontWeight: 500 }}>{fmt(g.gainEur)}</td>
                   <td style={s.td}>
                     {taxFree ? <span style={{ display: "inline-block", padding: "1px 6px", fontSize: "9px", fontFamily: "'IBM Plex Mono', monospace", border: `1px solid ${colors.green}`, color: colors.green, letterSpacing: "0.1em" }}>FREE</span>
-                    : <span style={{ display: "inline-block", padding: "1px 6px", fontSize: "9px", fontFamily: "'IBM Plex Mono', monospace", border: `1px solid ${colors.red}`, color: colors.red, letterSpacing: "0.1em" }}>TAX</span>}
+                    : <span style={{ display: "inline-block", padding: "1px 6px", fontSize: "9px", fontFamily: "'IBM Plex Mono', monospace", border: `1px solid ${colors.accent}`, color: colors.accent, letterSpacing: "0.1em" }}>TAX</span>}
                   </td>
                   <td style={s.td}><ECell value={sale.notes || ""} onChange={v => updateSale(sale.id, "notes", v)} multiline style={{ fontSize: "11px", minWidth: "120px" }} /></td>
                   <td style={s.td}><button style={s.btnDanger} onClick={() => removeSale(sale.id)}>×</button></td>
