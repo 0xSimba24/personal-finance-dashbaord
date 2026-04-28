@@ -20,6 +20,7 @@ const defaultData = {
   ],
   oneOffExpenses: [],
   monthlyLedger: [], // Array of { ym: "YYYY-MM", income, fixedExp, sips, oneOffs, surplus, netWorth, closedAt }
+  realizedSales: [], // Array of { id, dateSold, asset, class, qtySold, salePrice, saleCurrency, costBasis, costCurrency, dateAcquired, notes, gainEur }
   phases: [
     { id: 1, name: "Clear Credit Card", target: 2400, current: 2400, status: "complete", currency: "EUR", milestones: [] },
     { id: 2, name: "Build €10k Buffer", target: 10000, current: 1200, status: "active", currency: "EUR",
@@ -583,6 +584,7 @@ export default function App() {
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
   const [showCompletedPhases, setShowCompletedPhases] = useState(false);
   const [oneOffYear, setOneOffYear] = useState(new Date().getFullYear());
+  const [salesYear, setSalesYear] = useState(new Date().getFullYear());
   const [allocFilter, setAllocFilter] = useState({ liquid: true, illiquid: true });
 
   const refreshPrices = useCallback(async () => {
@@ -760,6 +762,7 @@ export default function App() {
     { key: "overview", label: "Overview" }, { key: "income", label: "Income & Expenses" },
     { key: "portfolio", label: "Portfolio" }, { key: "invest", label: "SIPs & Allocation" },
     { key: "liabilities", label: "Liabilities" }, { key: "history", label: "History" },
+    { key: "sales", label: "Realized Sales" },
   ];
 
   const activePhase = data.phases.find(p => p.status === "active");
@@ -2381,6 +2384,206 @@ export default function App() {
     );
   };
 
+  // ─── REALIZED SALES ───
+  const renderSales = () => {
+    const sales = data.realizedSales || [];
+    const usdRate = data.settings.eurToUsd || 1.08;
+
+    // Compute helpers
+    const computeGain = (sale) => {
+      const saleProceedsCcy = (sale.qtySold || 0) * (sale.salePrice || 0);
+      const costCcy = (sale.qtySold || 0) * (sale.costBasis || 0);
+      const saleEur = toEur(saleProceedsCcy, sale.saleCurrency || "EUR", rate, usdRate);
+      const costEur = toEur(costCcy, sale.costCurrency || sale.saleCurrency || "EUR", rate, usdRate);
+      return { saleEur, costEur, gainEur: saleEur - costEur };
+    };
+
+    const daysHeld = (sale) => {
+      if (!sale.dateAcquired || !sale.dateSold) return null;
+      const a = new Date(sale.dateAcquired); const s = new Date(sale.dateSold);
+      return Math.floor((s - a) / 86400000);
+    };
+
+    const isTaxFreeCrypto = (sale) => {
+      const d = daysHeld(sale);
+      return sale.class === "Crypto" && d != null && d > 365;
+    };
+
+    // Year filter
+    const years = [...new Set(sales.map(s => (s.dateSold || "").slice(0, 4)).filter(y => y.length === 4))].sort().reverse();
+    const activeYearStr = years.includes(String(salesYear)) ? String(salesYear) : (years[0] || String(new Date().getFullYear()));
+    const filtered = sales.filter(s => (s.dateSold || "").slice(0, 4) === activeYearStr).sort((a, b) => (b.dateSold || "").localeCompare(a.dateSold || ""));
+
+    // Summary metrics for active year
+    const totalRealizedGain = filtered.reduce((s, sale) => s + computeGain(sale).gainEur, 0);
+    const taxFreeGain = filtered.filter(isTaxFreeCrypto).reduce((s, sale) => s + computeGain(sale).gainEur, 0);
+    const taxableGain = totalRealizedGain - taxFreeGain;
+
+    const exportCsv = () => {
+      const rows = filtered.map(sale => {
+        const g = computeGain(sale);
+        const dh = daysHeld(sale);
+        return {
+          dateSold: sale.dateSold || "",
+          asset: sale.asset || "",
+          class: sale.class || "",
+          qtySold: sale.qtySold || 0,
+          salePrice: sale.salePrice || 0,
+          saleCurrency: sale.saleCurrency || "",
+          costBasis: sale.costBasis || 0,
+          costCurrency: sale.costCurrency || sale.saleCurrency || "",
+          dateAcquired: sale.dateAcquired || "",
+          daysHeld: dh ?? "",
+          taxFree: isTaxFreeCrypto(sale) ? "yes" : "no",
+          saleProceedsEur: g.saleEur.toFixed(2),
+          costBasisEur: g.costEur.toFixed(2),
+          gainLossEur: g.gainEur.toFixed(2),
+          notes: (sale.notes || "").replace(/[\r\n,"]/g, " "),
+        };
+      });
+      const headers = ["dateSold","asset","class","qtySold","salePrice","saleCurrency","costBasis","costCurrency","dateAcquired","daysHeld","taxFree","saleProceedsEur","costBasisEur","gainLossEur","notes"];
+      const csv = [headers.join(",")].concat(rows.map(r => headers.map(h => `"${r[h]}"`).join(","))).join("\n");
+      const blob = new Blob([csv], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = `realized-sales-${activeYearStr}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    };
+
+    const updateSale = (id, field, value) => {
+      const updated = sales.map(x => x.id === id ? { ...x, [field]: value } : x);
+      update("realizedSales", updated);
+    };
+
+    const addSale = () => {
+      const newSale = {
+        id: uid(),
+        dateSold: localDate(),
+        asset: "",
+        class: "Equity",
+        qtySold: 0,
+        salePrice: 0,
+        saleCurrency: "EUR",
+        costBasis: 0,
+        costCurrency: "EUR",
+        dateAcquired: "",
+        notes: "",
+      };
+      update("realizedSales", [...sales, newSale]);
+    };
+
+    const removeSale = (id) => {
+      if (!confirm("Delete this sale record?")) return;
+      update("realizedSales", sales.filter(x => x.id !== id));
+    };
+
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+        {/* Summary */}
+        <div style={s.card}>
+          <div style={s.flex}>
+            <H2>Realized Sales · {activeYearStr}</H2>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              {years.length > 0 && <div style={{ display: "flex", gap: "2px" }}>
+                {years.map(y => (
+                  <button key={y} onClick={() => setSalesYear(parseInt(y))} style={{
+                    padding: "3px 8px", borderRadius: 0, border: `1px solid ${activeYearStr === y ? colors.accent : colors.border}`, cursor: "pointer",
+                    fontSize: "9px", fontWeight: 500, fontFamily: "'IBM Plex Mono', monospace",
+                    letterSpacing: "0.1em",
+                    background: activeYearStr === y ? colors.accent : "transparent",
+                    color: activeYearStr === y ? colors.bg : colors.textDim,
+                  }}>{y}</button>
+                ))}
+              </div>}
+              <button style={s.btnOutline} onClick={exportCsv} disabled={filtered.length === 0}>EXPORT CSV</button>
+              <button style={s.btn} onClick={addSale}>+ ADD SALE</button>
+            </div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "12px", marginTop: "14px" }}>
+            <div>
+              <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "9px", letterSpacing: "0.14em", color: colors.textDim, textTransform: "uppercase" }}>Sales Count</div>
+              <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "16px", marginTop: "4px", fontWeight: 500 }}>{filtered.length}</div>
+            </div>
+            <div>
+              <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "9px", letterSpacing: "0.14em", color: colors.textDim, textTransform: "uppercase" }}>Total Realized G/L</div>
+              <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "16px", marginTop: "4px", fontWeight: 500, color: totalRealizedGain >= 0 ? colors.green : colors.red }}>{fmt(totalRealizedGain)}</div>
+            </div>
+            <div>
+              <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "9px", letterSpacing: "0.14em", color: colors.textDim, textTransform: "uppercase" }}>Tax-Free (Crypto >1y)</div>
+              <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "16px", marginTop: "4px", fontWeight: 500, color: colors.green }}>{fmt(taxFreeGain)}</div>
+            </div>
+            <div>
+              <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "9px", letterSpacing: "0.14em", color: colors.textDim, textTransform: "uppercase" }}>Taxable</div>
+              <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "16px", marginTop: "4px", fontWeight: 500, color: colors.accent }}>{fmt(taxableGain)}</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Sales Table */}
+        <div style={s.card}>
+          {filtered.length === 0 ? <div style={{ padding: "30px 0", textAlign: "center", color: colors.textMuted, fontSize: "10px", letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'IBM Plex Mono', monospace" }}>
+            <span style={{ color: colors.accent }}>&gt;</span> No sales recorded for {activeYearStr} · Use [+ ADD SALE] above
+          </div> :
+          <div style={{ overflowX: "auto" }}>
+            <table style={s.table}>
+              <thead>
+                <tr>
+                  <th style={s.th}>Date Sold</th>
+                  <th style={s.th}>Asset</th>
+                  <th style={s.th}>Class</th>
+                  <th style={{ ...s.th, textAlign: "right" }}>Qty</th>
+                  <th style={{ ...s.th, textAlign: "right" }}>Sale Px</th>
+                  <th style={s.th}>Curr</th>
+                  <th style={{ ...s.th, textAlign: "right" }}>Cost/Unit</th>
+                  <th style={s.th}>Curr</th>
+                  <th style={s.th}>Acquired</th>
+                  <th style={{ ...s.th, textAlign: "right" }}>Days</th>
+                  <th style={{ ...s.th, textAlign: "right" }}>G/L EUR</th>
+                  <th style={s.th}>Tax</th>
+                  <th style={s.th}>Notes</th>
+                  <th style={s.th}></th>
+                </tr>
+              </thead>
+              <tbody>{filtered.map(sale => {
+                const g = computeGain(sale);
+                const dh = daysHeld(sale);
+                const taxFree = isTaxFreeCrypto(sale);
+                return <tr key={sale.id}>
+                  <td style={s.td}><input type="date" style={{ ...s.input, fontSize: "11px", width: "130px" }} value={sale.dateSold || ""} onChange={e => updateSale(sale.id, "dateSold", e.target.value)} /></td>
+                  <td style={s.td}><ECell value={sale.asset || ""} onChange={v => updateSale(sale.id, "asset", v)} /></td>
+                  <td style={s.td}>
+                    <select style={{ ...s.select, fontSize: "11px" }} value={sale.class || "Equity"} onChange={e => updateSale(sale.id, "class", e.target.value)}>
+                      <option>Equity</option>
+                      <option>MF</option>
+                      <option>Crypto</option>
+                      <option>ESOP</option>
+                      <option>Other</option>
+                    </select>
+                  </td>
+                  <td style={{ ...s.td, textAlign: "right" }}><ECell value={sale.qtySold || 0} type="number" onChange={v => updateSale(sale.id, "qtySold", v)} /></td>
+                  <td style={{ ...s.td, textAlign: "right" }}><ECell value={sale.salePrice || 0} type="number" onChange={v => updateSale(sale.id, "salePrice", v)} /></td>
+                  <td style={s.td}><CurrSelect value={sale.saleCurrency || "EUR"} onChange={v => updateSale(sale.id, "saleCurrency", v)} /></td>
+                  <td style={{ ...s.td, textAlign: "right" }}><ECell value={sale.costBasis || 0} type="number" onChange={v => updateSale(sale.id, "costBasis", v)} /></td>
+                  <td style={s.td}><CurrSelect value={sale.costCurrency || sale.saleCurrency || "EUR"} onChange={v => updateSale(sale.id, "costCurrency", v)} /></td>
+                  <td style={s.td}><input type="date" style={{ ...s.input, fontSize: "11px", width: "130px" }} value={sale.dateAcquired || ""} onChange={e => updateSale(sale.id, "dateAcquired", e.target.value)} /></td>
+                  <td style={{ ...s.td, textAlign: "right", fontFamily: "'IBM Plex Mono', monospace" }}>{dh ?? "—"}</td>
+                  <td style={{ ...s.td, textAlign: "right", color: g.gainEur >= 0 ? colors.green : colors.red, fontFamily: "'IBM Plex Mono', monospace", fontWeight: 500 }}>{fmt(g.gainEur)}</td>
+                  <td style={s.td}>
+                    {taxFree ? <span style={{ display: "inline-block", padding: "1px 6px", fontSize: "9px", fontFamily: "'IBM Plex Mono', monospace", border: `1px solid ${colors.green}`, color: colors.green, letterSpacing: "0.1em" }}>FREE</span>
+                    : <span style={{ display: "inline-block", padding: "1px 6px", fontSize: "9px", fontFamily: "'IBM Plex Mono', monospace", border: `1px solid ${colors.red}`, color: colors.red, letterSpacing: "0.1em" }}>TAX</span>}
+                  </td>
+                  <td style={s.td}><ECell value={sale.notes || ""} onChange={v => updateSale(sale.id, "notes", v)} multiline style={{ fontSize: "11px", minWidth: "120px" }} /></td>
+                  <td style={s.td}><button style={s.btnDanger} onClick={() => removeSale(sale.id)}>×</button></td>
+                </tr>;
+              })}</tbody>
+            </table>
+          </div>}
+        </div>
+      </div>
+    );
+  };
+
   const activePhaseForStrip = data.phases.find(p => p.status === "active");
   const activePhaseCurrent = activePhaseForStrip ? getPhaseCurrent(activePhaseForStrip) : 0;
   const phaseProgressPct = activePhaseForStrip && activePhaseForStrip.target > 0 ? (activePhaseCurrent / activePhaseForStrip.target * 100) : 0;
@@ -2441,6 +2644,7 @@ export default function App() {
       {tab === "invest" && renderInvest()}
       {tab === "liabilities" && renderLiabilities()}
       {tab === "history" && renderHistory()}
+      {tab === "sales" && renderSales()}
 
       {/* Bottom Action Bar */}
       <div style={{ marginTop: "40px", padding: "12px 0", borderTop: `1px solid ${colors.border}`, display: "flex", justifyContent: "space-between", alignItems: "center", fontFamily: "'IBM Plex Mono', monospace", fontSize: "10px", color: colors.textMuted, letterSpacing: "0.1em", textTransform: "uppercase", flexWrap: "wrap", gap: "12px" }}>
