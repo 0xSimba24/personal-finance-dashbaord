@@ -1819,14 +1819,59 @@ export default function App() {
         </div>}
 
         {subTab === "crypto" && <div style={s.card}>
-          <div style={s.flex}><H2>Crypto</H2><button style={s.btn} onClick={() => addItem("crypto", { name: "Token", quantity: 0, costPrice: 0, currentPrice: 0, currency: "USD", liquid: true })}>+ Add</button></div>
+          <div style={s.flex}>
+            <H2>Crypto</H2>
+            <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+              <select
+                style={{ ...s.select, fontSize: "11px", padding: "4px 8px" }}
+                value=""
+                onChange={e => {
+                  if (!e.target.value) return;
+                  const src = data.crypto.find(c => c.id === e.target.value);
+                  if (!src) return;
+                  addItem("crypto", {
+                    name: `${src.name} (Copy)`,
+                    quantity: 0,
+                    costPrice: 0,
+                    currentPrice: src.currentPrice || 0,
+                    currency: src.currency || "USD",
+                    liquid: src.liquid !== undefined ? src.liquid : true,
+                    coingeckoId: src.coingeckoId || "",
+                    hyperliquidTicker: src.hyperliquidTicker || "",
+                  });
+                  e.target.value = "";
+                }}
+              >
+                <option value="">+ Duplicate from...</option>
+                {data.crypto.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+              <button style={s.btn} onClick={() => addItem("crypto", { name: "Token", quantity: 0, costPrice: 0, currentPrice: 0, currency: "USD", liquid: true })}>+ Add</button>
+            </div>
+          </div>
           {(data.priceHistory || []).length >= 2 && <div style={{ marginBottom: "14px" }}>
             <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: h.cryptoTotal || 0 }))} color="#f59e0b" liveValue={calc.cryptoValue.total} />
           </div>}
           <div style={{ overflowX: "auto" }}><table style={s.table}><thead><tr><th style={s.th}>Token</th><th style={s.th}>Qty</th><th style={s.th}>Cost</th><th style={s.th}>Current</th><th style={s.th}>Invested</th><th style={s.th}>Value</th><th style={s.th}>P/L</th><th style={s.th}>Liq</th><th style={s.th}></th></tr></thead>
           <tbody>{data.crypto.map(c => {
             const inv = c.quantity * c.costPrice, cur = c.quantity * c.currentPrice, pl = cur - inv, plP = inv > 0 ? (pl / inv * 100) : 0;
-            return <tr key={c.id}><td style={s.td}><ECell value={c.name} onChange={v => updateItem("crypto", c.id, "name", v)} />{c.notes ? <div style={{ marginTop: "4px" }}><span style={{ display: "inline-block", background: colors.cardAlt, padding: "2px 8px", borderRadius: "4px", marginLeft: "-8px" }}><ECell value={c.notes} onChange={v => updateItem("crypto", c.id, "notes", v)} multiline style={{ fontSize: "10px", color: "#c5cae0", background: "transparent" }} /></span></div> : <div style={{ marginTop: "2px" }}><span style={{ fontSize: "8px", color: colors.border, cursor: "pointer" }} onClick={() => updateItem("crypto", c.id, "notes", "Add note...")}>+ note</span></div>}</td><td style={s.td}><ECell value={c.quantity} type="number" onChange={v => updateItem("crypto", c.id, "quantity", v)} /></td><td style={s.td}><ECell value={c.costPrice} type="number" onChange={v => updateItem("crypto", c.id, "costPrice", v)} /></td><td style={s.td}><ECell value={c.currentPrice} type="number" onChange={v => updateItem("crypto", c.id, "currentPrice", v)} /></td><td style={s.td}>{fmt(inv, c.currency)}</td><td style={s.td}>{fmt(cur, c.currency)}</td><td style={s.td}><span style={{ color: pl >= 0 ? colors.green : colors.red }}>{fmt(pl, c.currency)} ({plP.toFixed(1)}%)</span></td><td style={s.td}><button style={s.liqBadge(c.liquid)} onClick={() => updateItem("crypto", c.id, "liquid", !c.liquid)}>{c.liquid ? "LIQ" : "ILLIQ"}</button></td><td style={s.td}><button style={s.btnDanger} onClick={() => removeItem("crypto", c.id)}>×</button></td></tr>;
+            const missingPriceConfig = !c.coingeckoId && !c.hyperliquidTicker && (c.currentPrice || 0) === 0;
+            return <tr key={c.id}>
+              <td style={s.td}>
+                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                  {missingPriceConfig && <span title="No CoinGecko ID or Hyperliquid ticker set — price won't auto-fetch. Open Settings → Crypto IDs to configure." style={{ display: "inline-block", width: "8px", height: "8px", borderRadius: "50%", background: "#f59e0b", flexShrink: 0 }} />}
+                  <ECell value={c.name} onChange={v => updateItem("crypto", c.id, "name", v)} />
+                </div>
+                {c.notes ? <div style={{ marginTop: "4px" }}><span style={{ display: "inline-block", background: colors.cardAlt, padding: "2px 8px", borderRadius: "4px", marginLeft: "-8px" }}><ECell value={c.notes} onChange={v => updateItem("crypto", c.id, "notes", v)} multiline style={{ fontSize: "10px", color: "#c5cae0", background: "transparent" }} /></span></div> : <div style={{ marginTop: "2px" }}><span style={{ fontSize: "8px", color: colors.border, cursor: "pointer" }} onClick={() => updateItem("crypto", c.id, "notes", "Add note...")}>+ note</span></div>}
+              </td>
+              <td style={s.td}><ECell value={c.quantity} type="number" onChange={v => updateItem("crypto", c.id, "quantity", v)} /></td>
+              <td style={s.td}><ECell value={c.costPrice} type="number" onChange={v => updateItem("crypto", c.id, "costPrice", v)} /></td>
+              <td style={s.td}><ECell value={c.currentPrice} type="number" onChange={v => updateItem("crypto", c.id, "currentPrice", v)} /></td>
+              <td style={s.td}>{fmt(inv, c.currency)}</td>
+              <td style={s.td}>{fmt(cur, c.currency)}</td>
+              <td style={s.td}><span style={{ color: pl >= 0 ? colors.green : colors.red }}>{fmt(pl, c.currency)} ({plP.toFixed(1)}%)</span></td>
+              <td style={s.td}><button style={s.liqBadge(c.liquid)} onClick={() => updateItem("crypto", c.id, "liquid", !c.liquid)}>{c.liquid ? "LIQ" : "ILLIQ"}</button></td>
+              <td style={s.td}><button style={s.btnDanger} onClick={() => removeItem("crypto", c.id)}>×</button></td>
+            </tr>;
           })}</tbody></table></div>
           {(() => {
             const liquidUsd = data.crypto.filter(c => c.liquid).reduce((s, c) => s + c.quantity * c.currentPrice, 0);
