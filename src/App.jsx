@@ -2389,13 +2389,47 @@ export default function App() {
     const sales = data.realizedSales || [];
     const usdRate = data.settings.eurToUsd || 1.08;
 
+    // Build current holdings list for the asset dropdown
+    // Each holding has: key, label, class, costBasis, currency, currentPrice
+    const holdings = [];
+    data.mutualFunds.filter(f => f.units > 0).forEach(f => {
+      const avgCost = f.units > 0 ? (f.totalInvested || 0) / f.units : 0;
+      holdings.push({ key: `mf:${f.id}`, label: f.name, class: "MF", costBasis: avgCost, currency: f.currency || "INR", currentPrice: f.currentPrice || 0 });
+    });
+    (data.equityAccounts || []).forEach(acct => {
+      acct.stocks.filter(s => s.quantity > 0).forEach(st => {
+        holdings.push({ key: `eq:${acct.id}:${st.id}`, label: `${st.name} (${acct.name})`, class: "Equity", costBasis: st.costPrice || 0, currency: st.currency || acct.currency || "INR", currentPrice: st.currentPrice || 0 });
+      });
+    });
+    data.crypto.filter(c => c.quantity > 0).forEach(c => {
+      holdings.push({ key: `crypto:${c.id}`, label: c.name, class: "Crypto", costBasis: c.costPrice || 0, currency: c.currency || "USD", currentPrice: c.currentPrice || 0 });
+    });
+    data.esops.filter(e => (e.vestedQty || 0) > 0).forEach(e => {
+      holdings.push({ key: `esop:${e.id}`, label: `${e.company} ESOP`, class: "ESOP", costBasis: e.strikePrice || 0, currency: e.currency || "EUR", currentPrice: e.currentPrice || 0 });
+    });
+
     // Compute helpers
     const computeGain = (sale) => {
       const saleProceedsCcy = (sale.qtySold || 0) * (sale.salePrice || 0);
       const costCcy = (sale.qtySold || 0) * (sale.costBasis || 0);
-      const saleEur = toEur(saleProceedsCcy, sale.saleCurrency || "EUR", rate, usdRate);
-      const costEur = toEur(costCcy, sale.costCurrency || sale.saleCurrency || "EUR", rate, usdRate);
+      // Use stored fxToEur if present, else current rate
+      const saleFxToEur = sale.saleFxToEur ?? null;
+      const costFxToEur = sale.costFxToEur ?? null;
+      const eurFromCcy = (amt, ccy, customRate) => {
+        if (customRate != null && customRate > 0) return amt * customRate;
+        return toEur(amt, ccy, rate, usdRate);
+      };
+      const saleEur = eurFromCcy(saleProceedsCcy, sale.saleCurrency || "EUR", saleFxToEur);
+      const costEur = eurFromCcy(costCcy, sale.costCurrency || sale.saleCurrency || "EUR", costFxToEur);
       return { saleEur, costEur, gainEur: saleEur - costEur };
+    };
+
+    // Get the conversion rate for a currency to EUR (for display in field)
+    const ccyToEurRate = (ccy) => {
+      if (ccy === "EUR") return 1;
+      if (ccy === "INR") return 1 / rate;
+      if (ccy === "USD") return 1 / usdRate;
+      return 1;
     };
 
     const daysHeld = (sale) => {
@@ -2423,6 +2457,8 @@ export default function App() {
       const rows = filtered.map(sale => {
         const g = computeGain(sale);
         const dh = daysHeld(sale);
+        const saleFx = sale.saleFxToEur ?? ccyToEurRate(sale.saleCurrency || "EUR");
+        const costFx = sale.costFxToEur ?? ccyToEurRate(sale.costCurrency || sale.saleCurrency || "EUR");
         return {
           dateSold: sale.dateSold || "",
           asset: sale.asset || "",
@@ -2430,8 +2466,10 @@ export default function App() {
           qtySold: sale.qtySold || 0,
           salePrice: sale.salePrice || 0,
           saleCurrency: sale.saleCurrency || "",
+          saleFxToEur: saleFx.toFixed(6),
           costBasis: sale.costBasis || 0,
           costCurrency: sale.costCurrency || sale.saleCurrency || "",
+          costFxToEur: costFx.toFixed(6),
           dateAcquired: sale.dateAcquired || "",
           daysHeld: dh ?? "",
           taxFree: isTaxFreeCrypto(sale) ? "yes" : "no",
@@ -2441,7 +2479,7 @@ export default function App() {
           notes: (sale.notes || "").replace(/[\r\n,"]/g, " "),
         };
       });
-      const headers = ["dateSold","asset","class","qtySold","salePrice","saleCurrency","costBasis","costCurrency","dateAcquired","daysHeld","taxFree","saleProceedsEur","costBasisEur","gainLossEur","notes"];
+      const headers = ["dateSold","asset","class","qtySold","salePrice","saleCurrency","saleFxToEur","costBasis","costCurrency","costFxToEur","dateAcquired","daysHeld","taxFree","saleProceedsEur","costBasisEur","gainLossEur","notes"];
       const csv = [headers.join(",")].concat(rows.map(r => headers.map(h => `"${r[h]}"`).join(","))).join("\n");
       const blob = new Blob([csv], { type: "text/csv" });
       const url = URL.createObjectURL(blob);
@@ -2456,17 +2494,43 @@ export default function App() {
       update("realizedSales", updated);
     };
 
+    // When user picks an asset from the dropdown, prefill class, costBasis, currencies
+    const applyAssetSelection = (id, holdingKey) => {
+      if (!holdingKey) {
+        updateSale(id, "assetKey", "");
+        return;
+      }
+      const h = holdings.find(x => x.key === holdingKey);
+      if (!h) return;
+      const updated = sales.map(x => x.id === id ? {
+        ...x,
+        assetKey: holdingKey,
+        asset: h.label,
+        class: h.class,
+        costBasis: x.costBasis || h.costBasis,
+        costCurrency: x.costCurrency || h.currency,
+        saleCurrency: x.saleCurrency || h.currency,
+        salePrice: x.salePrice || h.currentPrice,
+        costFxToEur: x.costFxToEur ?? ccyToEurRate(h.currency),
+        saleFxToEur: x.saleFxToEur ?? ccyToEurRate(h.currency),
+      } : x);
+      update("realizedSales", updated);
+    };
+
     const addSale = () => {
       const newSale = {
         id: uid(),
         dateSold: localDate(),
+        assetKey: "", // links to a current holding (optional)
         asset: "",
         class: "Equity",
         qtySold: 0,
         salePrice: 0,
         saleCurrency: "EUR",
+        saleFxToEur: 1, // captured at sale time, editable later
         costBasis: 0,
         costCurrency: "EUR",
+        costFxToEur: 1,
         dateAcquired: "",
         notes: "",
       };
@@ -2535,8 +2599,10 @@ export default function App() {
                   <th style={{ ...s.th, textAlign: "right" }}>Qty</th>
                   <th style={{ ...s.th, textAlign: "right" }}>Sale Px</th>
                   <th style={s.th}>Curr</th>
+                  <th style={{ ...s.th, textAlign: "right" }}>Sale FX→EUR</th>
                   <th style={{ ...s.th, textAlign: "right" }}>Cost/Unit</th>
                   <th style={s.th}>Curr</th>
+                  <th style={{ ...s.th, textAlign: "right" }}>Cost FX→EUR</th>
                   <th style={s.th}>Acquired</th>
                   <th style={{ ...s.th, textAlign: "right" }}>Days</th>
                   <th style={{ ...s.th, textAlign: "right" }}>G/L EUR</th>
@@ -2549,9 +2615,25 @@ export default function App() {
                 const g = computeGain(sale);
                 const dh = daysHeld(sale);
                 const taxFree = isTaxFreeCrypto(sale);
+                const saleFxDisplay = sale.saleFxToEur ?? ccyToEurRate(sale.saleCurrency || "EUR");
+                const costFxDisplay = sale.costFxToEur ?? ccyToEurRate(sale.costCurrency || sale.saleCurrency || "EUR");
                 return <tr key={sale.id}>
                   <td style={s.td}><input type="date" style={{ ...s.input, fontSize: "11px", width: "130px" }} value={sale.dateSold || ""} onChange={e => updateSale(sale.id, "dateSold", e.target.value)} /></td>
-                  <td style={s.td}><ECell value={sale.asset || ""} onChange={v => updateSale(sale.id, "asset", v)} /></td>
+                  <td style={s.td}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
+                      <select style={{ ...s.select, fontSize: "11px", minWidth: "140px" }} value={sale.assetKey || ""} onChange={e => applyAssetSelection(sale.id, e.target.value)}>
+                        <option value="">— Pick from holdings —</option>
+                        {["Crypto", "Equity", "MF", "ESOP"].map(cls => {
+                          const inClass = holdings.filter(h => h.class === cls);
+                          if (inClass.length === 0) return null;
+                          return <optgroup key={cls} label={cls}>
+                            {inClass.map(h => <option key={h.key} value={h.key}>{h.label}</option>)}
+                          </optgroup>;
+                        })}
+                      </select>
+                      <ECell value={sale.asset || ""} onChange={v => updateSale(sale.id, "asset", v)} style={{ fontSize: "11px" }} />
+                    </div>
+                  </td>
                   <td style={s.td}>
                     <select style={{ ...s.select, fontSize: "11px" }} value={sale.class || "Equity"} onChange={e => updateSale(sale.id, "class", e.target.value)}>
                       <option>Equity</option>
@@ -2563,9 +2645,15 @@ export default function App() {
                   </td>
                   <td style={{ ...s.td, textAlign: "right" }}><ECell value={sale.qtySold || 0} type="number" onChange={v => updateSale(sale.id, "qtySold", v)} /></td>
                   <td style={{ ...s.td, textAlign: "right" }}><ECell value={sale.salePrice || 0} type="number" onChange={v => updateSale(sale.id, "salePrice", v)} /></td>
-                  <td style={s.td}><CurrSelect value={sale.saleCurrency || "EUR"} onChange={v => updateSale(sale.id, "saleCurrency", v)} /></td>
+                  <td style={s.td}><CurrSelect value={sale.saleCurrency || "EUR"} onChange={v => { updateSale(sale.id, "saleCurrency", v); updateSale(sale.id, "saleFxToEur", ccyToEurRate(v)); }} /></td>
+                  <td style={{ ...s.td, textAlign: "right" }}>
+                    <ECell value={Number(saleFxDisplay).toFixed(6)} type="number" onChange={v => updateSale(sale.id, "saleFxToEur", parseFloat(v) || 0)} style={{ width: "80px", textAlign: "right" }} />
+                  </td>
                   <td style={{ ...s.td, textAlign: "right" }}><ECell value={sale.costBasis || 0} type="number" onChange={v => updateSale(sale.id, "costBasis", v)} /></td>
-                  <td style={s.td}><CurrSelect value={sale.costCurrency || sale.saleCurrency || "EUR"} onChange={v => updateSale(sale.id, "costCurrency", v)} /></td>
+                  <td style={s.td}><CurrSelect value={sale.costCurrency || sale.saleCurrency || "EUR"} onChange={v => { updateSale(sale.id, "costCurrency", v); updateSale(sale.id, "costFxToEur", ccyToEurRate(v)); }} /></td>
+                  <td style={{ ...s.td, textAlign: "right" }}>
+                    <ECell value={Number(costFxDisplay).toFixed(6)} type="number" onChange={v => updateSale(sale.id, "costFxToEur", parseFloat(v) || 0)} style={{ width: "80px", textAlign: "right" }} />
+                  </td>
                   <td style={s.td}><input type="date" style={{ ...s.input, fontSize: "11px", width: "130px" }} value={sale.dateAcquired || ""} onChange={e => updateSale(sale.id, "dateAcquired", e.target.value)} /></td>
                   <td style={{ ...s.td, textAlign: "right", fontFamily: "'IBM Plex Mono', monospace" }}>{dh ?? "—"}</td>
                   <td style={{ ...s.td, textAlign: "right", color: g.gainEur >= 0 ? colors.green : colors.red, fontFamily: "'IBM Plex Mono', monospace", fontWeight: 500 }}>{fmt(g.gainEur)}</td>
