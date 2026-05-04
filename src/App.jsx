@@ -19,6 +19,7 @@ const defaultData = {
     { id: uid(), name: "Subscriptions", amount: 50, currency: "EUR", frequency: "monthly" },
   ],
   oneOffExpenses: [],
+  oneOffIncome: [],
   monthlyLedger: [], // Array of { ym: "YYYY-MM", income, fixedExp, sips, oneOffs, surplus, netWorth, closedAt }
   realizedSales: [], // Array of { id, dateSold, asset, class, qtySold, salePrice, saleCurrency, costBasis, costCurrency, dateAcquired, notes, gainEur }
   phases: [
@@ -282,6 +283,12 @@ const ONEOFF_CATEGORY_COLORS = {
   Education: "#8a9a5b", Clothing: "#c4841c", Events: "#d4a373", Other: "#8a8a82"
 };
 
+const ONEOFF_INCOME_CATEGORIES = ["Bonus", "Crypto Sale", "Gift", "Freelance", "Tax Refund", "Investment", "Other"];
+const ONEOFF_INCOME_COLORS = {
+  Bonus: "#4ea96a", "Crypto Sale": "#f5a623", Gift: "#9b7ed6",
+  Freelance: "#4ec9e6", "Tax Refund": "#8a9a5b", Investment: "#d67ab5", Other: "#8a8a82"
+};
+
 const autoCategorize = (name) => {
   const n = name.toLowerCase();
   if (/parking|car.*loan|car.*emi|car charging|car insur|charging|tesla premium/.test(n)) return "Transportation";
@@ -457,8 +464,12 @@ export default function App() {
     const thisMonthOneOffEur = (data.oneOffExpenses || [])
       .filter(e => (e.date || "").slice(0, 7) === activeYm)
       .reduce((s, e) => s + eur(e.amount || 0, e.currency), 0);
-    // Surplus now subtracts this month's one-offs too
-    const surplus = totalIncomeEur - totalFixedEur - totalSipsEur - thisMonthOneOffEur;
+    const totalOneOffIncomeEur = (data.oneOffIncome || []).reduce((s, e) => s + eur(e.amount || 0, e.currency), 0);
+    const thisMonthOneOffIncomeEur = (data.oneOffIncome || [])
+      .filter(e => (e.date || "").slice(0, 7) === activeYm)
+      .reduce((s, e) => s + eur(e.amount || 0, e.currency), 0);
+    // Surplus: monthly recurring income + this month's one-off income - expenses - SIPs - one-offs
+    const surplus = totalIncomeEur + thisMonthOneOffIncomeEur - totalFixedEur - totalSipsEur - thisMonthOneOffEur;
     const totalAllocEur = data.surplusAllocation.filter(a => a.phase === data.settings.currentPhase).reduce((s, a) => s + eur(a.amount, a.currency), 0);
     const unallocated = surplus - totalAllocEur;
 
@@ -498,7 +509,7 @@ export default function App() {
     const liquidNW = liquidAssets;
     const illiquidNW = illiquidAssets;
 
-    return { rate, activeYm, totalIncomeEur, totalFixedEur, totalSipsEur, totalOneOffEur, thisMonthOneOffEur, surplus, totalAllocEur, unallocated, mfValue, eqValue, cashValue, cryptoValue, propValue, esopValue, grossAssets, liquidAssets, illiquidAssets, totalLiabEur, netWorth, liquidNW, illiquidNW };
+    return { rate, activeYm, totalIncomeEur, totalFixedEur, totalSipsEur, totalOneOffEur, thisMonthOneOffEur, totalOneOffIncomeEur, thisMonthOneOffIncomeEur, surplus, totalAllocEur, unallocated, mfValue, eqValue, cashValue, cryptoValue, propValue, esopValue, grossAssets, liquidAssets, illiquidAssets, totalLiabEur, netWorth, liquidNW, illiquidNW };
   }, [data]);
 
   // Compute phase current value — auto-sum linked holdings or use manual value
@@ -1264,18 +1275,20 @@ export default function App() {
     const currentClosed = !!ledgerByYm[calendarYm];
 
     const closeMonth = (ym, label) => {
-      if (!confirm(`Close ${label}?\n\nThis will save a snapshot of:\n· Income: ${fmt(calc.totalIncomeEur)}\n· Fixed Exp: ${fmt(calc.totalFixedEur)}\n· SIPs: ${fmt(calc.totalSipsEur)}\n· One-offs (${ym}): ${fmt(calc.thisMonthOneOffEur)}\n· Surplus: ${fmt(calc.surplus)}\n\nYou can edit this record later in the Month Ledger.`)) return;
-      // For closing prev month, use current live values (assumption: they reflect that period)
-      // For this-month one-offs, we filter by the specific ym being closed
       const oneOffsForYm = (data.oneOffExpenses || [])
         .filter(e => (e.date || "").slice(0, 7) === ym)
         .reduce((s, e) => s + toEur(e.amount || 0, e.currency, rate, data.settings.eurToUsd || 1.08), 0);
+      const oneOffIncomeForYm = (data.oneOffIncome || [])
+        .filter(e => (e.date || "").slice(0, 7) === ym)
+        .reduce((s, e) => s + toEur(e.amount || 0, e.currency, rate, data.settings.eurToUsd || 1.08), 0);
+      if (!confirm(`Close ${label}?\n\nThis will save a snapshot of:\n· Income: ${fmt(calc.totalIncomeEur)}${oneOffIncomeForYm > 0 ? `\n· + One-off Income (${ym}): ${fmt(oneOffIncomeForYm)}` : ""}\n· Fixed Exp: ${fmt(calc.totalFixedEur)}\n· SIPs: ${fmt(calc.totalSipsEur)}\n· One-offs (${ym}): ${fmt(oneOffsForYm)}\n· Surplus: ${fmt(calc.totalIncomeEur + oneOffIncomeForYm - calc.totalFixedEur - calc.totalSipsEur - oneOffsForYm)}\n\nYou can edit this record later in the Month Ledger.`)) return;
       const income = calc.totalIncomeEur;
       const fixedExp = calc.totalFixedEur;
       const sips = calc.totalSipsEur;
       const oneOffs = oneOffsForYm;
-      const surplus = income - fixedExp - sips - oneOffs;
-      const newRecord = { ym, income, fixedExp, sips, oneOffs, surplus, netWorth: calc.netWorth, closedAt: new Date().toISOString() };
+      const oneOffIncome = oneOffIncomeForYm;
+      const surplus = income + oneOffIncome - fixedExp - sips - oneOffs;
+      const newRecord = { ym, income, oneOffIncome, fixedExp, sips, oneOffs, surplus, netWorth: calc.netWorth, closedAt: new Date().toISOString() };
       const updated = [...ledger.filter(l => l.ym !== ym), newRecord].sort((a, b) => a.ym.localeCompare(b.ym));
       update("monthlyLedger", updated);
     };
@@ -1406,6 +1419,36 @@ export default function App() {
           })}</tbody></table>}
         </div>
 
+        {/* One-off Income */}
+        <div style={s.card}>
+          <div style={s.flex}>
+            <H2>One-off Income</H2>
+            <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+              {(data.oneOffIncome || []).length > 0 && <span style={{ fontSize: "10px", color: colors.textDim, letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'IBM Plex Mono', monospace" }}>
+                This Month: <span style={{ color: colors.green }}>{fmt(calc.thisMonthOneOffIncomeEur)}</span> · Total: <span style={{ color: colors.text }}>{fmt(calc.totalOneOffIncomeEur)}</span>
+              </span>}
+              <button style={s.btn} onClick={() => addItem("oneOffIncome", { name: "Income", amount: 0, currency: "EUR", date: localDate(), category: "Other" })}>+ ADD</button>
+            </div>
+          </div>
+          {(data.oneOffIncome || []).length === 0 ? <div style={{ fontSize: "10px", color: colors.textMuted, padding: "16px 0", textAlign: "center", letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'IBM Plex Mono', monospace" }}>No one-off income · Bonus, gifts, crypto sales, freelance, tax refunds</div> :
+          <table style={{ ...s.table, marginTop: "10px" }}><thead><tr><th style={s.th}>Source</th><th style={s.th}>Category</th><th style={s.th}>Amount</th><th style={s.th}>Curr</th><th style={s.th}>Date</th><th style={s.th}></th></tr></thead>
+          <tbody>{(data.oneOffIncome || []).map(e => {
+            const cat = e.category || "Other";
+            const catColor = ONEOFF_INCOME_COLORS[cat] || colors.textDim;
+            return <tr key={e.id}>
+              <td style={s.td}><ECell value={e.name} onChange={v => updateItem("oneOffIncome", e.id, "name", v)} /></td>
+              <td style={s.td}>
+                <span style={{ display: "inline-block", width: "8px", height: "8px", background: catColor, marginRight: "6px", verticalAlign: "middle" }} />
+                <select style={{ ...s.select, color: colors.textDim }} value={cat} onChange={ev => updateItem("oneOffIncome", e.id, "category", ev.target.value)}>{ONEOFF_INCOME_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}</select>
+              </td>
+              <td style={s.td}><ECell value={e.amount} type="number" onChange={v => updateItem("oneOffIncome", e.id, "amount", v)} /></td>
+              <td style={s.td}><CurrSelect value={e.currency} onChange={v => updateItem("oneOffIncome", e.id, "currency", v)} /></td>
+              <td style={s.td}><input type="date" style={s.input} value={e.date} onChange={ev => updateItem("oneOffIncome", e.id, "date", ev.target.value)} /></td>
+              <td style={s.td}><button style={s.btnDanger} onClick={() => removeItem("oneOffIncome", e.id)}>×</button></td>
+            </tr>;
+          })}</tbody></table>}
+        </div>
+
         {/* Cash Flow 12mo Chart */}
         {(() => {
           // Window ends at activeYm (calendar month, or next month if calendar is closed)
@@ -1427,9 +1470,9 @@ export default function App() {
             const label = m.date.toLocaleDateString("en-US", { month: "short" }).toUpperCase();
             if (l && l.skipped) return { label, ym: m.ym, fixed: 0, sips: 0, oneOffs: 0, surplus: 0, deficit: 0, income: 0, skipped: true };
             let income = 0, fixed = 0, sips = 0, oneOffs = 0;
-            if (l) { income = l.income || 0; fixed = l.fixedExp || 0; sips = l.sips || 0; oneOffs = l.oneOffs || 0; }
+            if (l) { income = (l.income || 0) + (l.oneOffIncome || 0); fixed = l.fixedExp || 0; sips = l.sips || 0; oneOffs = l.oneOffs || 0; }
             else if (m.ym === currentYm) {
-              income = calc.totalIncomeEur;
+              income = calc.totalIncomeEur + calc.thisMonthOneOffIncomeEur;
               fixed = calc.totalFixedEur;
               sips = calc.totalSipsEur;
               oneOffs = calc.thisMonthOneOffEur;
@@ -1527,7 +1570,7 @@ export default function App() {
                   const updated = ledger.map(x => {
                     if (x.ym !== l.ym) return x;
                     const nx = { ...x, [field]: v };
-                    nx.surplus = (nx.income || 0) - (nx.fixedExp || 0) - (nx.sips || 0) - (nx.oneOffs || 0);
+                    nx.surplus = (nx.income || 0) + (nx.oneOffIncome || 0) - (nx.fixedExp || 0) - (nx.sips || 0) - (nx.oneOffs || 0);
                     return nx;
                   });
                   update("monthlyLedger", updated);
@@ -1589,6 +1632,10 @@ export default function App() {
               <span style={{ color: colors.textDim, textTransform: "uppercase", letterSpacing: "0.1em", fontSize: "10px" }}>Income</span>
               <span style={{ color: colors.green }}>{fmt(calc.totalIncomeEur)}</span>
             </div>
+            {calc.thisMonthOneOffIncomeEur > 0 && <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: `1px solid ${colors.gridLine}` }}>
+              <span style={{ color: colors.textDim, textTransform: "uppercase", letterSpacing: "0.1em", fontSize: "10px" }}>+ One-off Income</span>
+              <span style={{ color: colors.green }}>{fmt(calc.thisMonthOneOffIncomeEur)}</span>
+            </div>}
             <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: `1px solid ${colors.gridLine}` }}>
               <span style={{ color: colors.textDim, textTransform: "uppercase", letterSpacing: "0.1em", fontSize: "10px" }}>− Expenses</span>
               <span style={{ color: colors.red }}>{fmt(calc.totalFixedEur)}</span>
