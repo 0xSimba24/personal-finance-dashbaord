@@ -20,6 +20,7 @@ const defaultData = {
   ],
   oneOffExpenses: [],
   oneOffIncome: [],
+  spousePortfolio: { name: "Upasana", assets: [] },
   monthlyLedger: [], // Array of { ym: "YYYY-MM", income, fixedExp, sips, oneOffs, surplus, netWorth, closedAt }
   realizedSales: [], // Array of { id, dateSold, asset, class, qtySold, salePrice, saleCurrency, costBasis, costCurrency, dateAcquired, notes, gainEur }
   phases: [
@@ -614,20 +615,23 @@ export default function App() {
       }
     } catch (e) { results.push("FX: failed"); }
 
-    // 1. Crypto (CoinGecko + Hyperliquid)
+    // 1. Crypto (CoinGecko + Hyperliquid) — includes spouse's crypto
     try {
       setRefreshMsg("Fetching crypto prices...");
 
+      // Combine own + spouse crypto for a single API call
+      const spouseCrypto = (updated.spousePortfolio?.assets || []).filter(a => a.type === "Crypto");
+      const allCrypto = [...data.crypto, ...spouseCrypto];
+
       // CoinGecko (returns { id: { price, change24h } })
-      const cryptoPrices = await fetchCryptoPrices(data.crypto);
+      const cryptoPrices = await fetchCryptoPrices(allCrypto);
 
       // Hyperliquid (for pre-market tokens)
-      const hlTickers = data.crypto.filter(c => c.hyperliquidTicker).map(c => c.hyperliquidTicker);
+      const hlTickers = allCrypto.filter(c => c.hyperliquidTicker).map(c => c.hyperliquidTicker);
       const hlPrices = await fetchHyperliquidPrices(hlTickers);
 
       let cryptoCount = 0;
-      updated.crypto = updated.crypto.map(c => {
-        // Hyperliquid takes priority if set
+      const updateCryptoEntry = (c) => {
         if (c.hyperliquidTicker && hlPrices[c.hyperliquidTicker.toUpperCase()]) {
           const newPrice = hlPrices[c.hyperliquidTicker.toUpperCase()];
           const oldPrice = c.currentPrice || newPrice;
@@ -639,7 +643,12 @@ export default function App() {
           return { ...c, currentPrice: cryptoPrices[c.coingeckoId].price, dailyChangePct: cryptoPrices[c.coingeckoId].change24h };
         }
         return c;
-      });
+      };
+      updated.crypto = updated.crypto.map(updateCryptoEntry);
+      // Update spouse crypto entries too
+      if (updated.spousePortfolio?.assets) {
+        updated.spousePortfolio = { ...updated.spousePortfolio, assets: updated.spousePortfolio.assets.map(a => a.type === "Crypto" ? updateCryptoEntry(a) : a) };
+      }
       results.push(`Crypto: ${cryptoCount} updated`);
     } catch (e) { results.push("Crypto: failed"); }
 
@@ -1159,6 +1168,92 @@ export default function App() {
           })}
         </div>
       </div>
+
+        {/* Household */}
+        {(() => {
+          const spouse = data.spousePortfolio || { name: "Spouse", assets: [] };
+          const spouseAssets = spouse.assets || [];
+          const spouseTotal = spouseAssets.reduce((s, a) => {
+            if (a.type === "Crypto") return s + toEur((a.quantity || 0) * (a.currentPrice || 0), a.currency || "USD", rate, data.settings.eurToUsd || 1.08);
+            return s + toEur(a.amount || 0, a.currency || "EUR", rate, data.settings.eurToUsd || 1.08);
+          }, 0);
+          const householdNW = calc.netWorth + spouseTotal;
+
+          const updateSpouseAsset = (id, field, value) => {
+            const updated = spouseAssets.map(a => a.id === id ? { ...a, [field]: value } : a);
+            update("spousePortfolio", { ...spouse, assets: updated });
+          };
+          const addSpouseAsset = (type) => {
+            const base = { id: uid(), name: "", currency: type === "Crypto" ? "USD" : "INR", type, notes: "" };
+            if (type === "Crypto") Object.assign(base, { quantity: 0, costPrice: 0, currentPrice: 0, coingeckoId: "", hyperliquidTicker: "" });
+            else base.amount = 0;
+            update("spousePortfolio", { ...spouse, assets: [...spouseAssets, base] });
+          };
+          const removeSpouseAsset = (id) => {
+            update("spousePortfolio", { ...spouse, assets: spouseAssets.filter(a => a.id !== id) });
+          };
+
+          return <div style={s.card}>
+            <div style={s.flex}>
+              <H2>Household</H2>
+              <span style={{ fontSize: "16px", fontFamily: "'IBM Plex Mono', monospace", fontWeight: 500 }}>{fmt(householdNW)}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontFamily: "'IBM Plex Mono', monospace", fontSize: "11px", marginTop: "6px", padding: "6px 0", borderBottom: `1px solid ${colors.gridLine}` }}>
+              <span style={{ color: colors.textDim }}>You</span>
+              <span>{fmt(calc.netWorth)}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontFamily: "'IBM Plex Mono', monospace", fontSize: "11px", padding: "6px 0", borderBottom: `1px solid ${colors.gridLine}` }}>
+              <span style={{ color: colors.textDim }}>{spouse.name || "Spouse"}</span>
+              <span style={{ color: colors.green }}>{fmt(spouseTotal)}</span>
+            </div>
+            <details style={{ marginTop: "10px" }}>
+              <summary style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "10px", color: colors.textDim, letterSpacing: "0.1em", textTransform: "uppercase", cursor: "pointer" }}>
+                <span style={{ color: colors.accent, marginRight: "6px" }}>&gt;</span>{spouse.name}'s Assets ({spouseAssets.length})
+              </summary>
+              <div style={{ marginTop: "10px" }}>
+                {spouseAssets.length > 0 && <table style={{ ...s.table, fontSize: "11px" }}>
+                  <thead><tr><th style={s.th}>Name</th><th style={s.th}>Type</th><th style={{ ...s.th, textAlign: "right" }}>Value</th><th style={s.th}>Curr</th><th style={s.th}></th></tr></thead>
+                  <tbody>{spouseAssets.map(a => {
+                    const isCrypto = a.type === "Crypto";
+                    const val = isCrypto ? (a.quantity || 0) * (a.currentPrice || 0) : (a.amount || 0);
+                    const eurVal = toEur(val, a.currency || "EUR", rate, data.settings.eurToUsd || 1.08);
+                    return <tr key={a.id}>
+                      <td style={s.td}>
+                        <ECell value={a.name || ""} onChange={v => updateSpouseAsset(a.id, "name", v)} />
+                        {isCrypto && <div style={{ fontSize: "9px", color: colors.textMuted, marginTop: "2px" }}>
+                          Qty: <ECell value={a.quantity || 0} type="number" onChange={v => updateSpouseAsset(a.id, "quantity", v)} style={{ display: "inline", width: "60px" }} />
+                          {" · "}Px: <ECell value={a.currentPrice || 0} type="number" onChange={v => updateSpouseAsset(a.id, "currentPrice", v)} style={{ display: "inline", width: "60px" }} />
+                          {a.coingeckoId && <span style={{ color: colors.accent, marginLeft: "4px" }}>⟳</span>}
+                        </div>}
+                        {isCrypto && <div style={{ fontSize: "9px", color: colors.textMuted, marginTop: "2px" }}>
+                          CG ID: <input style={{ ...s.input, width: "80px", fontSize: "9px", display: "inline" }} value={a.coingeckoId || ""} onChange={e => updateSpouseAsset(a.id, "coingeckoId", e.target.value)} placeholder="coingecko-id" />
+                        </div>}
+                      </td>
+                      <td style={s.td}>
+                        <select style={{ ...s.select, fontSize: "10px" }} value={a.type} onChange={e => updateSpouseAsset(a.id, "type", e.target.value)}>
+                          <option>Cash</option><option>Crypto</option><option>Gold</option><option>FD</option><option>Other</option>
+                        </select>
+                      </td>
+                      <td style={{ ...s.td, textAlign: "right" }}>
+                        {isCrypto ? <span style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmt(val, a.currency)} <span style={{ color: colors.textMuted, fontSize: "9px" }}>({fmt(eurVal)})</span></span>
+                        : <ECell value={a.amount || 0} type="number" onChange={v => updateSpouseAsset(a.id, "amount", v)} style={{ textAlign: "right" }} />}
+                      </td>
+                      <td style={s.td}><CurrSelect value={a.currency || "EUR"} onChange={v => updateSpouseAsset(a.id, "currency", v)} /></td>
+                      <td style={s.td}><button style={s.btnDanger} onClick={() => removeSpouseAsset(a.id)}>×</button></td>
+                    </tr>;
+                  })}</tbody>
+                </table>}
+                <div style={{ display: "flex", gap: "6px", marginTop: "8px" }}>
+                  <button style={s.btnOutline} onClick={() => addSpouseAsset("Cash")}>+ Cash</button>
+                  <button style={s.btnOutline} onClick={() => addSpouseAsset("Crypto")}>+ Crypto</button>
+                  <button style={s.btnOutline} onClick={() => addSpouseAsset("Gold")}>+ Gold</button>
+                  <button style={s.btnOutline} onClick={() => addSpouseAsset("FD")}>+ FD</button>
+                </div>
+              </div>
+            </details>
+          </div>;
+        })()}
+
         </div>{/* end right rail */}
       </div>{/* end two-column grid */}
 
