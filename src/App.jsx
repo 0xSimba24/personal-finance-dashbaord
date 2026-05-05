@@ -8,7 +8,7 @@ const localDate = () => { const d = new Date(); return `${d.getFullYear()}-${Str
 const STORE_KEY = "fin-dashboard-v3";
 
 const defaultData = {
-  settings: { eurToInr: 91.5, eurToUsd: 1.08, currentPhase: 2, lastUpdated: null, googleSheetUrl: "" },
+  settings: { eurToInr: 91.5, eurToUsd: 1.08, currentPhase: 2, lastUpdated: null, googleSheetUrl: "", owners: ["Self"] },
   income: [
     { id: uid(), name: "Net Salary", amount: 4200, currency: "EUR", frequency: "monthly" },
   ],
@@ -256,6 +256,11 @@ const CurrSelect = ({ value, onChange }) => (
     <option value="EUR">EUR</option><option value="INR">INR</option><option value="USD">USD</option>
   </select>
 );
+const OwnerSelect = ({ value, owners, onChange }) => (
+  <select style={{ ...s.select, fontSize: "10px", color: (value || "Self") === "Self" ? colors.textMuted : colors.green }} value={value || "Self"} onChange={e => onChange(e.target.value)}>
+    {(owners || ["Self"]).map(o => <option key={o} value={o}>{o}</option>)}
+  </select>
+);
 
 const PanelHead = ({ title, meta, children }) => (
   <div style={{ padding: "10px 16px", borderBottom: `1px solid ${colors.border}`, display: "flex", justifyContent: "space-between", alignItems: "center", margin: "-16px -16px 12px -16px" }}>
@@ -350,6 +355,32 @@ export default function App() {
           return e;
         });
         if (expMigrated) storage.set(STORE_KEY, merged);
+      }
+      // Migrate: add owner field to all portfolio entries
+      const addOwner = (arr) => arr.map(x => x.owner ? x : { ...x, owner: "Self" });
+      merged.mutualFunds = addOwner(merged.mutualFunds || []);
+      merged.crypto = addOwner(merged.crypto || []);
+      merged.cashSavings = addOwner(merged.cashSavings || []);
+      merged.realEstate = addOwner(merged.realEstate || []);
+      merged.esops = addOwner(merged.esops || []);
+      merged.liabilities = addOwner(merged.liabilities || []);
+      if (merged.equityAccounts) merged.equityAccounts = addOwner(merged.equityAccounts);
+      // Ensure owners list exists in settings
+      if (!merged.settings.owners) merged.settings.owners = ["Self"];
+      // Migrate spousePortfolio into main holdings
+      if (merged.spousePortfolio && merged.spousePortfolio.assets && merged.spousePortfolio.assets.length > 0) {
+        const spName = merged.spousePortfolio.name || "Spouse";
+        if (!merged.settings.owners.includes(spName)) merged.settings.owners.push(spName);
+        merged.spousePortfolio.assets.forEach(a => {
+          if (a.type === "Crypto") {
+            merged.crypto.push({ ...a, owner: spName, liquid: true });
+          } else {
+            // Cash, Gold, FD, Other → cashSavings
+            merged.cashSavings.push({ id: a.id || uid(), name: a.name || a.type, amount: a.amount || 0, currency: a.currency || "EUR", owner: spName, liquid: true });
+          }
+        });
+        merged.spousePortfolio = { name: spName, assets: [] }; // Clear after migration
+        storage.set(STORE_KEY, merged);
       }
       setData(merged);
     } else {
@@ -448,11 +479,21 @@ export default function App() {
     const rate = data.settings.eurToInr;
     const usdRate = data.settings.eurToUsd || 1.08;
     const eur = (amount, currency) => toEur(amount, currency, rate, usdRate);
+
+    // Owner filtering for portfolio arrays (income/expenses/phases stay Self-only)
+    const of = (arr) => activeOwner === "Household" ? arr : arr.filter(x => (x.owner || "Self") === activeOwner);
+    const vMFs = of(data.mutualFunds);
+    const vEqAccounts = of(data.equityAccounts || []);
+    const vCash = of(data.cashSavings);
+    const vCrypto = of(data.crypto);
+    const vRE = of(data.realEstate || []);
+    const vESOPs = of(data.esops);
+    const vLiab = of(data.liabilities);
+
     const totalIncomeEur = data.income.reduce((s, i) => s + eur(i.frequency === "annual" ? i.amount / 12 : i.amount, i.currency), 0);
     const totalFixedEur = data.fixedExpenses.reduce((s, e) => s + eur(e.frequency === "annual" ? e.amount / 12 : e.amount, e.currency), 0);
     const totalSipsEur = data.sips.reduce((s, i) => s + eur(i.amount, i.currency), 0);
-    // One-off expenses: all-time total + active month total
-    // Active month = calendar current month, OR next month if current is already closed
+
     const calendarYm = localDate().slice(0, 7);
     const isClosedYm = (ym) => (data.monthlyLedger || []).some(l => l.ym === ym);
     let activeYm = calendarYm;
@@ -469,35 +510,34 @@ export default function App() {
     const thisMonthOneOffIncomeEur = (data.oneOffIncome || [])
       .filter(e => (e.date || "").slice(0, 7) === activeYm)
       .reduce((s, e) => s + eur(e.amount || 0, e.currency), 0);
-    // Surplus: monthly recurring income + this month's one-off income - expenses - SIPs - one-offs
     const surplus = totalIncomeEur + thisMonthOneOffIncomeEur - totalFixedEur - totalSipsEur - thisMonthOneOffEur;
     const totalAllocEur = data.surplusAllocation.filter(a => a.phase === data.settings.currentPhase).reduce((s, a) => s + eur(a.amount, a.currency), 0);
     const unallocated = surplus - totalAllocEur;
 
-    const mfValue = data.mutualFunds.reduce((s, f) => {
+    const mfValue = vMFs.reduce((s, f) => {
       const val = f.units * f.currentPrice;
       return { total: s.total + eur(val, f.currency), liquid: s.liquid + (f.liquid ? eur(val, f.currency) : 0) };
     }, { total: 0, liquid: 0 });
 
-    const allStocks = (data.equityAccounts || []).flatMap(a => a.stocks || []);
+    const allStocks = vEqAccounts.flatMap(a => a.stocks || []);
     const eqValue = allStocks.reduce((s, e) => {
       const val = e.quantity * e.currentPrice;
       return { total: s.total + eur(val, e.currency), liquid: s.liquid + (e.liquid ? eur(val, e.currency) : 0) };
     }, { total: 0, liquid: 0 });
 
-    const cashValue = data.cashSavings.reduce((s, c) => ({ total: s.total + eur(c.amount, c.currency), liquid: s.liquid + (c.liquid ? eur(c.amount, c.currency) : 0) }), { total: 0, liquid: 0 });
-    const cryptoValue = data.crypto.reduce((s, c) => {
+    const cashValue = vCash.reduce((s, c) => ({ total: s.total + eur(c.amount, c.currency), liquid: s.liquid + (c.liquid ? eur(c.amount, c.currency) : 0) }), { total: 0, liquid: 0 });
+    const cryptoValue = vCrypto.reduce((s, c) => {
       const val = c.quantity * c.currentPrice;
       return { total: s.total + eur(val, c.currency), liquid: s.liquid + (c.liquid ? eur(val, c.currency) : 0) };
     }, { total: 0, liquid: 0 });
-    const propValue = (data.realEstate || []).reduce((s, p) => ({ total: s.total + eur(p.value, p.currency), liquid: s.liquid + (p.liquid ? eur(p.value, p.currency) : 0) }), { total: 0, liquid: 0 });
-    const esopValue = data.esops.reduce((s, e) => {
+    const propValue = vRE.reduce((s, p) => ({ total: s.total + eur(p.value, p.currency), liquid: s.liquid + (p.liquid ? eur(p.value, p.currency) : 0) }), { total: 0, liquid: 0 });
+    const esopValue = vESOPs.reduce((s, e) => {
       const vv = Math.max(0, e.vestedQty * (e.currentPrice - e.strikePrice));
       const uv = Math.max(0, e.unvestedQty * (e.currentPrice - e.strikePrice));
       return { total: s.total + eur(vv + uv, e.currency), liquid: s.liquid + (e.liquid ? eur(vv, e.currency) : 0) };
     }, { total: 0, liquid: 0 });
 
-    const totalLiabEur = data.liabilities.reduce((s, l) => {
+    const totalLiabEur = vLiab.reduce((s, l) => {
       const spTotal = (l.specialPayments || []).reduce((s, p) => s + (p.amount || 0), 0);
       const amort = calcAmortization(l.totalAmount, l.interestRate, l.tenureMonths, getMonthsElapsed(l.startDate), spTotal, l.manualEMI || 0, l.balloonAmount || 0);
       return s + eur(amort.remainingPrincipal, l.currency);
@@ -510,8 +550,8 @@ export default function App() {
     const liquidNW = liquidAssets;
     const illiquidNW = illiquidAssets;
 
-    return { rate, activeYm, totalIncomeEur, totalFixedEur, totalSipsEur, totalOneOffEur, thisMonthOneOffEur, totalOneOffIncomeEur, thisMonthOneOffIncomeEur, surplus, totalAllocEur, unallocated, mfValue, eqValue, cashValue, cryptoValue, propValue, esopValue, grossAssets, liquidAssets, illiquidAssets, totalLiabEur, netWorth, liquidNW, illiquidNW };
-  }, [data]);
+    return { rate, activeOwner, activeYm, totalIncomeEur, totalFixedEur, totalSipsEur, totalOneOffEur, thisMonthOneOffEur, totalOneOffIncomeEur, thisMonthOneOffIncomeEur, surplus, totalAllocEur, unallocated, mfValue, eqValue, cashValue, cryptoValue, propValue, esopValue, grossAssets, liquidAssets, illiquidAssets, totalLiabEur, netWorth, liquidNW, illiquidNW };
+  }, [data, activeOwner]);
 
   // Compute phase current value — auto-sum linked holdings or use manual value
   const getPhaseCurrent = useCallback((phase) => {
@@ -594,9 +634,14 @@ export default function App() {
   const [showPriceSetup, setShowPriceSetup] = useState(false);
   const [showDailyMovers, setShowDailyMovers] = useState(true);
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
+  const [showFamilySetup, setShowFamilySetup] = useState(false);
   const [showCompletedPhases, setShowCompletedPhases] = useState(false);
   const [oneOffYear, setOneOffYear] = useState(new Date().getFullYear());
   const [salesYear, setSalesYear] = useState(new Date().getFullYear());
+  const [activeOwner, setActiveOwner] = useState("Self");
+  const vf = useCallback((arr) => activeOwner === "Household" ? arr : arr.filter(x => (x.owner || "Self") === activeOwner), [activeOwner]);
+  const newOwner = activeOwner === "Household" ? "Self" : activeOwner;
+  const owners = data.settings?.owners || ["Self"];
   const [allocFilter, setAllocFilter] = useState({ liquid: true, illiquid: true });
 
   const refreshPrices = useCallback(async () => {
@@ -1169,90 +1214,6 @@ export default function App() {
         </div>
       </div>
 
-        {/* Household */}
-        {(() => {
-          const spouse = data.spousePortfolio || { name: "Spouse", assets: [] };
-          const spouseAssets = spouse.assets || [];
-          const spouseTotal = spouseAssets.reduce((s, a) => {
-            if (a.type === "Crypto") return s + toEur((a.quantity || 0) * (a.currentPrice || 0), a.currency || "USD", rate, data.settings.eurToUsd || 1.08);
-            return s + toEur(a.amount || 0, a.currency || "EUR", rate, data.settings.eurToUsd || 1.08);
-          }, 0);
-          const householdNW = calc.netWorth + spouseTotal;
-
-          const updateSpouseAsset = (id, field, value) => {
-            const updated = spouseAssets.map(a => a.id === id ? { ...a, [field]: value } : a);
-            update("spousePortfolio", { ...spouse, assets: updated });
-          };
-          const addSpouseAsset = (type) => {
-            const base = { id: uid(), name: "", currency: type === "Crypto" ? "USD" : "INR", type, notes: "" };
-            if (type === "Crypto") Object.assign(base, { quantity: 0, costPrice: 0, currentPrice: 0, coingeckoId: "", hyperliquidTicker: "" });
-            else base.amount = 0;
-            update("spousePortfolio", { ...spouse, assets: [...spouseAssets, base] });
-          };
-          const removeSpouseAsset = (id) => {
-            update("spousePortfolio", { ...spouse, assets: spouseAssets.filter(a => a.id !== id) });
-          };
-
-          return <div style={s.card}>
-            <div style={s.flex}>
-              <H2>Household</H2>
-              <span style={{ fontSize: "16px", fontFamily: "'IBM Plex Mono', monospace", fontWeight: 500 }}>{fmt(householdNW)}</span>
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between", fontFamily: "'IBM Plex Mono', monospace", fontSize: "11px", marginTop: "6px", padding: "6px 0", borderBottom: `1px solid ${colors.gridLine}` }}>
-              <span style={{ color: colors.textDim }}>You</span>
-              <span>{fmt(calc.netWorth)}</span>
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between", fontFamily: "'IBM Plex Mono', monospace", fontSize: "11px", padding: "6px 0", borderBottom: `1px solid ${colors.gridLine}` }}>
-              <span style={{ color: colors.textDim }}>{spouse.name || "Spouse"}</span>
-              <span style={{ color: colors.green }}>{fmt(spouseTotal)}</span>
-            </div>
-            <details style={{ marginTop: "10px" }}>
-              <summary style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "10px", color: colors.textDim, letterSpacing: "0.1em", textTransform: "uppercase", cursor: "pointer" }}>
-                <span style={{ color: colors.accent, marginRight: "6px" }}>&gt;</span>{spouse.name}'s Assets ({spouseAssets.length})
-              </summary>
-              <div style={{ marginTop: "10px" }}>
-                {spouseAssets.length > 0 && <table style={{ ...s.table, fontSize: "11px" }}>
-                  <thead><tr><th style={s.th}>Name</th><th style={s.th}>Type</th><th style={{ ...s.th, textAlign: "right" }}>Value</th><th style={s.th}>Curr</th><th style={s.th}></th></tr></thead>
-                  <tbody>{spouseAssets.map(a => {
-                    const isCrypto = a.type === "Crypto";
-                    const val = isCrypto ? (a.quantity || 0) * (a.currentPrice || 0) : (a.amount || 0);
-                    const eurVal = toEur(val, a.currency || "EUR", rate, data.settings.eurToUsd || 1.08);
-                    return <tr key={a.id}>
-                      <td style={s.td}>
-                        <ECell value={a.name || ""} onChange={v => updateSpouseAsset(a.id, "name", v)} />
-                        {isCrypto && <div style={{ fontSize: "9px", color: colors.textMuted, marginTop: "2px" }}>
-                          Qty: <ECell value={a.quantity || 0} type="number" onChange={v => updateSpouseAsset(a.id, "quantity", v)} style={{ display: "inline", width: "60px" }} />
-                          {" · "}Px: <ECell value={a.currentPrice || 0} type="number" onChange={v => updateSpouseAsset(a.id, "currentPrice", v)} style={{ display: "inline", width: "60px" }} />
-                          {a.coingeckoId && <span style={{ color: colors.accent, marginLeft: "4px" }}>⟳</span>}
-                        </div>}
-                        {isCrypto && <div style={{ fontSize: "9px", color: colors.textMuted, marginTop: "2px" }}>
-                          CG ID: <input style={{ ...s.input, width: "80px", fontSize: "9px", display: "inline" }} value={a.coingeckoId || ""} onChange={e => updateSpouseAsset(a.id, "coingeckoId", e.target.value)} placeholder="coingecko-id" />
-                        </div>}
-                      </td>
-                      <td style={s.td}>
-                        <select style={{ ...s.select, fontSize: "10px" }} value={a.type} onChange={e => updateSpouseAsset(a.id, "type", e.target.value)}>
-                          <option>Cash</option><option>Crypto</option><option>Gold</option><option>FD</option><option>Other</option>
-                        </select>
-                      </td>
-                      <td style={{ ...s.td, textAlign: "right" }}>
-                        {isCrypto ? <span style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{fmt(val, a.currency)} <span style={{ color: colors.textMuted, fontSize: "9px" }}>({fmt(eurVal)})</span></span>
-                        : <ECell value={a.amount || 0} type="number" onChange={v => updateSpouseAsset(a.id, "amount", v)} style={{ textAlign: "right" }} />}
-                      </td>
-                      <td style={s.td}><CurrSelect value={a.currency || "EUR"} onChange={v => updateSpouseAsset(a.id, "currency", v)} /></td>
-                      <td style={s.td}><button style={s.btnDanger} onClick={() => removeSpouseAsset(a.id)}>×</button></td>
-                    </tr>;
-                  })}</tbody>
-                </table>}
-                <div style={{ display: "flex", gap: "6px", marginTop: "8px" }}>
-                  <button style={s.btnOutline} onClick={() => addSpouseAsset("Cash")}>+ Cash</button>
-                  <button style={s.btnOutline} onClick={() => addSpouseAsset("Crypto")}>+ Crypto</button>
-                  <button style={s.btnOutline} onClick={() => addSpouseAsset("Gold")}>+ Gold</button>
-                  <button style={s.btnOutline} onClick={() => addSpouseAsset("FD")}>+ FD</button>
-                </div>
-              </div>
-            </details>
-          </div>;
-        })()}
 
         </div>{/* end right rail */}
       </div>{/* end two-column grid */}
@@ -1333,6 +1294,39 @@ export default function App() {
               </div>
             );
           })}
+        </div>
+      </div>}
+
+      {showFamilySetup && <div style={s.card}>
+        <H2>Family Members</H2>
+        <div style={{ fontSize: "11px", color: colors.textDim, marginBottom: "12px" }}>
+          Manage family members. Tag any holding to a family member. Use the "Viewing" dropdown in the tab bar to filter by person or see Household totals.
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "12px" }}>
+          {(data.settings.owners || ["Self"]).map(o => (
+            <div key={o} style={{ display: "flex", alignItems: "center", gap: "4px", padding: "4px 10px", border: `1px solid ${o === "Self" ? colors.accent : colors.border}`, fontFamily: "'IBM Plex Mono', monospace", fontSize: "11px", color: o === "Self" ? colors.accent : colors.text }}>
+              {o}
+              {o !== "Self" && <button style={{ ...s.btnDanger, fontSize: "10px", padding: "0 4px", marginLeft: "4px" }} onClick={() => {
+                if (!confirm(`Remove "${o}"? Holdings tagged to this person will be re-tagged to "Self".`)) return;
+                const newOwners = (data.settings.owners || []).filter(x => x !== o);
+                update("settings", { ...data.settings, owners: newOwners });
+                // Re-tag all holdings from removed owner to Self
+                ["mutualFunds", "crypto", "cashSavings", "realEstate", "esops", "liabilities"].forEach(key => {
+                  if (data[key]) update(key, data[key].map(x => x.owner === o ? { ...x, owner: "Self" } : x));
+                });
+                if (data.equityAccounts) update("equityAccounts", data.equityAccounts.map(a => a.owner === o ? { ...a, owner: "Self" } : a));
+                if (activeOwner === o) setActiveOwner("Self");
+              }}>×</button>}
+            </div>
+          ))}
+          <button style={s.btnOutline} onClick={() => {
+            const name = prompt("Add family member name:");
+            if (!name || name.trim() === "") return;
+            const trimmed = name.trim();
+            const currentOwners = data.settings.owners || ["Self"];
+            if (currentOwners.includes(trimmed)) { alert("Already exists!"); return; }
+            update("settings", { ...data.settings, owners: [...currentOwners, trimmed] });
+          }}>+ ADD MEMBER</button>
         </div>
       </div>}
     </div>
@@ -1822,7 +1816,7 @@ export default function App() {
         <div style={s.flexG}>{subTabs.map(t => <button key={t.key} style={s.tab(subTab === t.key)} onClick={() => setSubTab(t.key)}>{t.label}</button>)}</div>
 
         {subTab === "mf" && <div style={s.card}>
-          <div style={s.flex}><H2>Mutual Funds / ETFs</H2><button style={s.btn} onClick={() => addItem("mutualFunds", { name: "New Fund", units: 0, totalInvested: 0, currentPrice: 0, currency: "INR", liquid: true })}>+ Add</button></div>
+          <div style={s.flex}><H2>Mutual Funds / ETFs</H2><button style={s.btn} onClick={() => addItem("mutualFunds", { name: "New Fund", units: 0, totalInvested: 0, currentPrice: 0, currency: "INR", liquid: true, owner: newOwner })}>+ Add</button></div>
           {(data.priceHistory || []).length >= 2 && <div style={{ marginBottom: "14px" }}>
             <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: h.mfTotal || 0 }))} liveValue={calc.mfValue.total} />
             {data.mutualFunds.filter(f => f.units > 0).length > 1 && <div style={{ marginTop: "14px" }}>
@@ -1834,18 +1828,18 @@ export default function App() {
             </div>}
           </div>}
           <div style={{ overflowX: "auto" }}><table style={s.table}><thead><tr><th style={s.th}>Fund</th><th style={s.th}>Curr</th><th style={s.th}>Units</th><th style={s.th}>Invested</th><th style={s.th}>NAV</th><th style={s.th}>Avg Cost</th><th style={s.th}>Value</th><th style={s.th}>P/L</th><th style={s.th}>Liq</th><th style={s.th}></th></tr></thead>
-          <tbody>{data.mutualFunds.map(f => {
+          <tbody>{vf(data.mutualFunds).map(f => {
             const invested = f.totalInvested != null ? f.totalInvested : (f.units * (f.costPrice || 0));
             const avgCost = f.units > 0 ? invested / f.units : 0;
             const cur = f.units * f.currentPrice, pl = cur - invested, plP = invested > 0 ? (pl / invested * 100) : 0;
-            return <tr key={f.id}><td style={s.td}><ECell value={f.name} onChange={v => updateItem("mutualFunds", f.id, "name", v)} />{f.notes ? <div style={{ marginTop: "4px" }}><span style={{ display: "inline-block", background: colors.cardAlt, padding: "2px 8px", borderRadius: "4px", marginLeft: "-8px" }}><ECell value={f.notes} onChange={v => updateItem("mutualFunds", f.id, "notes", v)} multiline style={{ fontSize: "10px", color: "#c5cae0", background: "transparent" }} /></span></div> : <div style={{ marginTop: "2px" }}><span style={{ fontSize: "8px", color: colors.border, cursor: "pointer" }} onClick={() => updateItem("mutualFunds", f.id, "notes", "Add note...")}>+ note</span></div>}</td><td style={s.td}><CurrSelect value={f.currency} onChange={v => updateItem("mutualFunds", f.id, "currency", v)} /></td><td style={s.td}><ECell value={f.units} type="number" onChange={v => updateItem("mutualFunds", f.id, "units", v)} /></td><td style={s.td}><ECell value={invested} type="number" onChange={v => updateItem("mutualFunds", f.id, "totalInvested", v)} /></td><td style={s.td}>{f.currentPrice.toLocaleString()}</td><td style={s.td}><span style={{ color: colors.textDim }}>{avgCost > 0 ? avgCost.toFixed(2) : "—"}</span></td><td style={s.td}>{fmt(cur, f.currency)}</td><td style={s.td}><span style={{ color: pl >= 0 ? colors.green : colors.red }}>{fmt(pl, f.currency)} ({plP.toFixed(1)}%)</span></td><td style={s.td}><button style={s.liqBadge(f.liquid)} onClick={() => updateItem("mutualFunds", f.id, "liquid", !f.liquid)}>{f.liquid ? "LIQ" : "ILLIQ"}</button></td><td style={s.td}><button style={s.btnDanger} onClick={() => removeItem("mutualFunds", f.id)}>×</button></td></tr>;
+            return <tr key={f.id}><td style={s.td}><ECell value={f.name} onChange={v => updateItem("mutualFunds", f.id, "name", v)} />{f.notes ? <div style={{ marginTop: "4px" }}><span style={{ display: "inline-block", background: colors.cardAlt, padding: "2px 8px", borderRadius: "4px", marginLeft: "-8px" }}><ECell value={f.notes} onChange={v => updateItem("mutualFunds", f.id, "notes", v)} multiline style={{ fontSize: "10px", color: "#c5cae0", background: "transparent" }} /></span></div> : <div style={{ marginTop: "2px" }}><span style={{ fontSize: "8px", color: colors.border, cursor: "pointer" }} onClick={() => updateItem("mutualFunds", f.id, "notes", "Add note...")}>+ note</span></div>}{owners.length > 1 && <div style={{ marginTop: "2px" }}><OwnerSelect value={f.owner} owners={owners} onChange={v => updateItem("mutualFunds", f.id, "owner", v)} /></div>}</td><td style={s.td}><CurrSelect value={f.currency} onChange={v => updateItem("mutualFunds", f.id, "currency", v)} /></td><td style={s.td}><ECell value={f.units} type="number" onChange={v => updateItem("mutualFunds", f.id, "units", v)} /></td><td style={s.td}><ECell value={invested} type="number" onChange={v => updateItem("mutualFunds", f.id, "totalInvested", v)} /></td><td style={s.td}>{f.currentPrice.toLocaleString()}</td><td style={s.td}><span style={{ color: colors.textDim }}>{avgCost > 0 ? avgCost.toFixed(2) : "—"}</span></td><td style={s.td}>{fmt(cur, f.currency)}</td><td style={s.td}><span style={{ color: pl >= 0 ? colors.green : colors.red }}>{fmt(pl, f.currency)} ({plP.toFixed(1)}%)</span></td><td style={s.td}><button style={s.liqBadge(f.liquid)} onClick={() => updateItem("mutualFunds", f.id, "liquid", !f.liquid)}>{f.liquid ? "LIQ" : "ILLIQ"}</button></td><td style={s.td}><button style={s.btnDanger} onClick={() => removeItem("mutualFunds", f.id)}>×</button></td></tr>;
           })}</tbody></table></div>
           <div style={{ marginTop: "8px", fontSize: "13px", fontWeight: 600, textAlign: "right" }}>Total: {fmtBoth(calc.mfValue.total, rate)}</div>
         </div>}
 
         {subTab === "eq" && <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
           <div style={s.card}>
-            <div style={s.flex}><H2>Direct Equity</H2><button style={s.btn} onClick={() => addItem("equityAccounts", { name: "New Account", currency: "INR", stocks: [] })}>+ ADD ACCOUNT</button></div>
+            <div style={s.flex}><H2>Direct Equity</H2><button style={s.btn} onClick={() => addItem("equityAccounts", { name: "New Account", currency: "INR", stocks: [], owner: newOwner })}>+ ADD ACCOUNT</button></div>
             {(data.priceHistory || []).length >= 2 ? <div style={{ marginTop: "10px" }}>
               <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: h.eqTotal || 0 }))} color="#8b5cf6" liveValue={calc.eqValue.total} />
               {(data.equityAccounts || []).filter(a => a.stocks.some(st => st.quantity > 0)).length > 1 && <div style={{ marginTop: "14px" }}>
@@ -1857,7 +1851,7 @@ export default function App() {
               </div>}
             </div> : <div style={{ padding: "20px 0", fontFamily: "'IBM Plex Mono', monospace", fontSize: "20px", fontWeight: 500 }}>{fmt(calc.eqValue.total)}</div>}
           </div>
-          {(data.equityAccounts || []).map(acct => {
+          {vf(data.equityAccounts || []).map(acct => {
             const acctCurrency = acct.currency || "INR";
             const acctNativeTotal = acct.stocks.reduce((s, st) => s + st.quantity * st.currentPrice, 0);
             const acctNativeInvested = acct.stocks.reduce((s, st) => s + st.quantity * st.costPrice, 0);
@@ -1872,6 +1866,7 @@ export default function App() {
                   <span style={{ fontSize: "12px", color: colors.textDim, width: "16px", transition: "transform 0.2s", transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)" }}>▶</span>
                   <div style={{ width: "4px", height: "24px", borderRadius: "2px", background: colors.accent }} />
                   <span style={{ fontSize: "14px", fontWeight: 600 }} onClick={e => e.stopPropagation()}><ECell value={acct.name} onChange={v => update("equityAccounts", data.equityAccounts.map(a => a.id === acct.id ? { ...a, name: v } : a))} style={{ fontSize: "14px", fontWeight: 600 }} /></span>
+                  {owners.length > 1 && <span style={{ marginLeft: "8px" }} onClick={e => e.stopPropagation()}><OwnerSelect value={acct.owner} owners={owners} onChange={v => update("equityAccounts", data.equityAccounts.map(a => a.id === acct.id ? { ...a, owner: v } : a))} /></span>}
                   <span onClick={e => e.stopPropagation()}><CurrSelect value={acctCurrency} onChange={v => {
                     const accts = data.equityAccounts.map(a => a.id === acct.id ? { ...a, currency: v, stocks: a.stocks.map(st => ({ ...st, currency: v })) } : a);
                     update("equityAccounts", accts);
@@ -1954,12 +1949,12 @@ export default function App() {
         </div>}
 
         {subTab === "cash" && <div style={s.card}>
-          <div style={s.flex}><H2>Cash & Savings</H2><button style={s.btn} onClick={() => addItem("cashSavings", { name: "New", type: "Bank", amount: 0, currency: "EUR", liquid: true })}>+ Add</button></div>
+          <div style={s.flex}><H2>Cash & Savings</H2><button style={s.btn} onClick={() => addItem("cashSavings", { name: "New", type: "Bank", amount: 0, currency: "EUR", liquid: true, owner: newOwner })}>+ Add</button></div>
           {(data.priceHistory || []).length >= 2 && <div style={{ marginBottom: "14px" }}>
             <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: h.cashTotal || 0 }))} color="#22c997" liveValue={calc.cashValue.total} />
           </div>}
           <table style={s.table}><thead><tr><th style={s.th}>Account</th><th style={s.th}>Type</th><th style={s.th}>Amount</th><th style={s.th}>Curr</th><th style={s.th}>EUR</th><th style={s.th}>Liq</th><th style={s.th}></th></tr></thead>
-          <tbody>{data.cashSavings.map(c => <tr key={c.id}><td style={s.td}><ECell value={c.name} onChange={v => updateItem("cashSavings", c.id, "name", v)} />{c.notes ? <div style={{ marginTop: "4px" }}><span style={{ display: "inline-block", background: colors.cardAlt, padding: "2px 8px", borderRadius: "4px", marginLeft: "-8px" }}><ECell value={c.notes} onChange={v => updateItem("cashSavings", c.id, "notes", v)} multiline style={{ fontSize: "10px", color: "#c5cae0", background: "transparent" }} /></span></div> : <div style={{ marginTop: "2px" }}><span style={{ fontSize: "8px", color: colors.border, cursor: "pointer" }} onClick={() => updateItem("cashSavings", c.id, "notes", "Add note...")}>+ note</span></div>}</td><td style={s.td}><select style={s.select} value={c.type} onChange={e => updateItem("cashSavings", c.id, "type", e.target.value)}><option>Bank</option><option>FD</option><option>RD</option><option>Other</option></select></td><td style={s.td}><ECell value={c.amount} type="number" onChange={v => updateItem("cashSavings", c.id, "amount", v)} /></td><td style={s.td}><CurrSelect value={c.currency} onChange={v => updateItem("cashSavings", c.id, "currency", v)} /></td><td style={s.td}>{fmt(toEur(c.amount, c.currency, rate))}</td><td style={s.td}><button style={s.liqBadge(c.liquid)} onClick={() => updateItem("cashSavings", c.id, "liquid", !c.liquid)}>{c.liquid ? "LIQ" : "ILLIQ"}</button></td><td style={s.td}><button style={s.btnDanger} onClick={() => removeItem("cashSavings", c.id)}>×</button></td></tr>)}</tbody></table>
+          <tbody>{vf(data.cashSavings).map(c => <tr key={c.id}><td style={s.td}><ECell value={c.name} onChange={v => updateItem("cashSavings", c.id, "name", v)} />{c.notes ? <div style={{ marginTop: "4px" }}><span style={{ display: "inline-block", background: colors.cardAlt, padding: "2px 8px", borderRadius: "4px", marginLeft: "-8px" }}><ECell value={c.notes} onChange={v => updateItem("cashSavings", c.id, "notes", v)} multiline style={{ fontSize: "10px", color: "#c5cae0", background: "transparent" }} /></span></div> : <div style={{ marginTop: "2px" }}><span style={{ fontSize: "8px", color: colors.border, cursor: "pointer" }} onClick={() => updateItem("cashSavings", c.id, "notes", "Add note...")}>+ note</span></div>}{owners.length > 1 && <div style={{ marginTop: "2px" }}><OwnerSelect value={c.owner} owners={owners} onChange={v => updateItem("cashSavings", c.id, "owner", v)} /></div>}</td><td style={s.td}><select style={s.select} value={c.type} onChange={e => updateItem("cashSavings", c.id, "type", e.target.value)}><option>Bank</option><option>FD</option><option>RD</option><option>Other</option></select></td><td style={s.td}><ECell value={c.amount} type="number" onChange={v => updateItem("cashSavings", c.id, "amount", v)} /></td><td style={s.td}><CurrSelect value={c.currency} onChange={v => updateItem("cashSavings", c.id, "currency", v)} /></td><td style={s.td}>{fmt(toEur(c.amount, c.currency, rate))}</td><td style={s.td}><button style={s.liqBadge(c.liquid)} onClick={() => updateItem("cashSavings", c.id, "liquid", !c.liquid)}>{c.liquid ? "LIQ" : "ILLIQ"}</button></td><td style={s.td}><button style={s.btnDanger} onClick={() => removeItem("cashSavings", c.id)}>×</button></td></tr>)}</tbody></table>
           <div style={{ marginTop: "8px", fontSize: "13px", fontWeight: 600, textAlign: "right" }}>Total: {fmtBoth(calc.cashValue.total, rate)}</div>
         </div>}
 
@@ -1983,21 +1978,22 @@ export default function App() {
                     liquid: src.liquid !== undefined ? src.liquid : true,
                     coingeckoId: src.coingeckoId || "",
                     hyperliquidTicker: src.hyperliquidTicker || "",
+                    owner: newOwner,
                   });
                   e.target.value = "";
                 }}
               >
                 <option value="">+ Duplicate from...</option>
-                {data.crypto.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                {vf(data.crypto).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
-              <button style={s.btn} onClick={() => addItem("crypto", { name: "Token", quantity: 0, costPrice: 0, currentPrice: 0, currency: "USD", liquid: true })}>+ Add</button>
+              <button style={s.btn} onClick={() => addItem("crypto", { name: "Token", quantity: 0, costPrice: 0, currentPrice: 0, currency: "USD", liquid: true, owner: newOwner })}>+ Add</button>
             </div>
           </div>
           {(data.priceHistory || []).length >= 2 && <div style={{ marginBottom: "14px" }}>
             <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: h.cryptoTotal || 0 }))} color="#f59e0b" liveValue={calc.cryptoValue.total} />
           </div>}
           <div style={{ overflowX: "auto" }}><table style={s.table}><thead><tr><th style={s.th}>Token</th><th style={s.th}>Qty</th><th style={s.th}>Cost</th><th style={s.th}>Current</th><th style={s.th}>Invested</th><th style={s.th}>Value</th><th style={s.th}>P/L</th><th style={s.th}>Liq</th><th style={s.th}></th></tr></thead>
-          <tbody>{data.crypto.map(c => {
+          <tbody>{vf(data.crypto).map(c => {
             const inv = c.quantity * c.costPrice, cur = c.quantity * c.currentPrice, pl = cur - inv, plP = inv > 0 ? (pl / inv * 100) : 0;
             const missingPriceConfig = !c.coingeckoId && !c.hyperliquidTicker && (c.currentPrice || 0) === 0;
             return <tr key={c.id}>
@@ -2007,6 +2003,7 @@ export default function App() {
                   <ECell value={c.name} onChange={v => updateItem("crypto", c.id, "name", v)} />
                 </div>
                 {c.notes ? <div style={{ marginTop: "4px" }}><span style={{ display: "inline-block", background: colors.cardAlt, padding: "2px 8px", borderRadius: "4px", marginLeft: "-8px" }}><ECell value={c.notes} onChange={v => updateItem("crypto", c.id, "notes", v)} multiline style={{ fontSize: "10px", color: "#c5cae0", background: "transparent" }} /></span></div> : <div style={{ marginTop: "2px" }}><span style={{ fontSize: "8px", color: colors.border, cursor: "pointer" }} onClick={() => updateItem("crypto", c.id, "notes", "Add note...")}>+ note</span></div>}
+                {owners.length > 1 && <div style={{ marginTop: "2px" }}><OwnerSelect value={c.owner} owners={owners} onChange={v => updateItem("crypto", c.id, "owner", v)} /></div>}
               </td>
               <td style={s.td}><ECell value={c.quantity} type="number" onChange={v => updateItem("crypto", c.id, "quantity", v)} /></td>
               <td style={s.td}><ECell value={c.costPrice} type="number" onChange={v => updateItem("crypto", c.id, "costPrice", v)} /></td>
@@ -2032,24 +2029,24 @@ export default function App() {
         </div>}
 
         {subTab === "re" && <div style={s.card}>
-          <div style={s.flex}><H2>Physical Assets</H2><button style={s.btn} onClick={() => update("realEstate", [...(data.realEstate || []), { id: uid(), name: "Property", value: 0, currency: "INR", liquid: false }])}>+ Add</button></div>
+          <div style={s.flex}><H2>Physical Assets</H2><button style={s.btn} onClick={() => update("realEstate", [...(data.realEstate || []), { id: uid(), name: "Property", value: 0, currency: "INR", liquid: false, owner: newOwner }])}>+ Add</button></div>
           {(data.priceHistory || []).length >= 2 && (data.priceHistory || []).some(h => h.reTotal > 0) && <div style={{ marginBottom: "14px" }}>
             <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: h.reTotal || 0 }))} color="#3b82f6" liveValue={calc.propValue.total} />
           </div>}
           {(!data.realEstate || data.realEstate.length === 0) ? <div style={{ fontSize: "12px", color: colors.textDim, padding: "12px 0" }}>No real estate</div> :
           <table style={s.table}><thead><tr><th style={s.th}>Name</th><th style={s.th}>Value</th><th style={s.th}>Curr</th><th style={s.th}>EUR</th><th style={s.th}>Liq</th><th style={s.th}></th></tr></thead>
-          <tbody>{data.realEstate.map(p => <tr key={p.id}><td style={s.td}><ECell value={p.name} onChange={v => update("realEstate", data.realEstate.map(i => i.id === p.id ? { ...i, name: v } : i))} />{p.notes ? <div style={{ marginTop: "4px" }}><span style={{ display: "inline-block", background: colors.cardAlt, padding: "2px 8px", borderRadius: "4px", marginLeft: "-8px" }}><ECell value={p.notes} onChange={v => update("realEstate", data.realEstate.map(i => i.id === p.id ? { ...i, notes: v } : i))} multiline style={{ fontSize: "10px", color: "#c5cae0", background: "transparent" }} /></span></div> : <div style={{ marginTop: "2px" }}><span style={{ fontSize: "8px", color: colors.border, cursor: "pointer" }} onClick={() => update("realEstate", data.realEstate.map(i => i.id === p.id ? { ...i, notes: "Add note..." } : i))}>+ note</span></div>}</td><td style={s.td}><ECell value={p.value} type="number" onChange={v => update("realEstate", data.realEstate.map(i => i.id === p.id ? { ...i, value: v } : i))} /></td><td style={s.td}><CurrSelect value={p.currency} onChange={v => update("realEstate", data.realEstate.map(i => i.id === p.id ? { ...i, currency: v } : i))} /></td><td style={s.td}>{fmt(toEur(p.value, p.currency, rate))}</td><td style={s.td}><button style={s.liqBadge(p.liquid)} onClick={() => update("realEstate", data.realEstate.map(i => i.id === p.id ? { ...i, liquid: !i.liquid } : i))}>{p.liquid ? "LIQ" : "ILLIQ"}</button></td><td style={s.td}><button style={s.btnDanger} onClick={() => update("realEstate", data.realEstate.filter(i => i.id !== p.id))}>×</button></td></tr>)}</tbody></table>}
+          <tbody>{vf(data.realEstate || []).map(p => <tr key={p.id}><td style={s.td}><ECell value={p.name} onChange={v => update("realEstate", data.realEstate.map(i => i.id === p.id ? { ...i, name: v } : i))} />{p.notes ? <div style={{ marginTop: "4px" }}><span style={{ display: "inline-block", background: colors.cardAlt, padding: "2px 8px", borderRadius: "4px", marginLeft: "-8px" }}><ECell value={p.notes} onChange={v => update("realEstate", data.realEstate.map(i => i.id === p.id ? { ...i, notes: v } : i))} multiline style={{ fontSize: "10px", color: "#c5cae0", background: "transparent" }} /></span></div> : <div style={{ marginTop: "2px" }}><span style={{ fontSize: "8px", color: colors.border, cursor: "pointer" }} onClick={() => update("realEstate", data.realEstate.map(i => i.id === p.id ? { ...i, notes: "Add note..." } : i))}>+ note</span></div>}{owners.length > 1 && <div style={{ marginTop: "2px" }}><OwnerSelect value={p.owner} owners={owners} onChange={v => update("realEstate", data.realEstate.map(i => i.id === p.id ? { ...i, owner: v } : i))} /></div>}</td><td style={s.td}><ECell value={p.value} type="number" onChange={v => update("realEstate", data.realEstate.map(i => i.id === p.id ? { ...i, value: v } : i))} /></td><td style={s.td}><CurrSelect value={p.currency} onChange={v => update("realEstate", data.realEstate.map(i => i.id === p.id ? { ...i, currency: v } : i))} /></td><td style={s.td}>{fmt(toEur(p.value, p.currency, rate))}</td><td style={s.td}><button style={s.liqBadge(p.liquid)} onClick={() => update("realEstate", data.realEstate.map(i => i.id === p.id ? { ...i, liquid: !i.liquid } : i))}>{p.liquid ? "LIQ" : "ILLIQ"}</button></td><td style={s.td}><button style={s.btnDanger} onClick={() => update("realEstate", data.realEstate.filter(i => i.id !== p.id))}>×</button></td></tr>)}</tbody></table>}
         </div>}
 
         {subTab === "esop" && <div style={s.card}>
-          <div style={s.flex}><H2>ESOPs</H2><button style={s.btn} onClick={() => addItem("esops", { company: "Company", strikePrice: 0, quantity: 0, currentPrice: 0, vestedQty: 0, unvestedQty: 0, currency: "EUR", liquid: false })}>+ Add</button></div>
+          <div style={s.flex}><H2>ESOPs</H2><button style={s.btn} onClick={() => addItem("esops", { company: "Company", strikePrice: 0, quantity: 0, currentPrice: 0, vestedQty: 0, unvestedQty: 0, currency: "EUR", liquid: false, owner: newOwner })}>+ Add</button></div>
           {(data.priceHistory || []).length >= 2 && (data.priceHistory || []).some(h => h.esopTotal > 0) && <div style={{ marginBottom: "14px" }}>
             <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: h.esopTotal || 0 }))} color="#ec4899" liveValue={calc.esopValue.total} />
           </div>}
           <div style={{ overflowX: "auto" }}><table style={s.table}><thead><tr><th style={s.th}>Company</th><th style={s.th}>Strike</th><th style={s.th}>Current</th><th style={s.th}>Total</th><th style={s.th}>Vested</th><th style={s.th}>Unvested</th><th style={s.th}>Vested Val</th><th style={s.th}>Unvested Val</th><th style={s.th}>Liq</th><th style={s.th}></th></tr></thead>
-          <tbody>{data.esops.map(e => {
+          <tbody>{vf(data.esops).map(e => {
             const vv = Math.max(0, e.vestedQty * (e.currentPrice - e.strikePrice)), uv = Math.max(0, e.unvestedQty * (e.currentPrice - e.strikePrice));
-            return <tr key={e.id}><td style={s.td}><ECell value={e.company} onChange={v => updateItem("esops", e.id, "company", v)} />{e.notes ? <div style={{ marginTop: "4px" }}><span style={{ display: "inline-block", background: colors.cardAlt, padding: "2px 8px", borderRadius: "4px", marginLeft: "-8px" }}><ECell value={e.notes} onChange={v => updateItem("esops", e.id, "notes", v)} multiline style={{ fontSize: "10px", color: "#c5cae0", background: "transparent" }} /></span></div> : <div style={{ marginTop: "2px" }}><span style={{ fontSize: "8px", color: colors.border, cursor: "pointer" }} onClick={() => updateItem("esops", e.id, "notes", "Add note...")}>+ note</span></div>}</td><td style={s.td}><ECell value={e.strikePrice} type="number" onChange={v => updateItem("esops", e.id, "strikePrice", v)} /></td><td style={s.td}><ECell value={e.currentPrice} type="number" onChange={v => updateItem("esops", e.id, "currentPrice", v)} /></td><td style={s.td}><ECell value={e.quantity} type="number" onChange={v => updateItem("esops", e.id, "quantity", v)} /></td><td style={s.td}><ECell value={e.vestedQty} type="number" onChange={v => updateItem("esops", e.id, "vestedQty", v)} /></td><td style={s.td}><ECell value={e.unvestedQty} type="number" onChange={v => updateItem("esops", e.id, "unvestedQty", v)} /></td><td style={s.td}><span style={{ color: colors.green }}>{fmt(vv, e.currency)}</span></td><td style={s.td}><span style={{ color: colors.yellow }}>{fmt(uv, e.currency)}</span></td><td style={s.td}><button style={s.liqBadge(e.liquid)} onClick={() => updateItem("esops", e.id, "liquid", !e.liquid)}>{e.liquid ? "LIQ" : "ILLIQ"}</button></td><td style={s.td}><button style={s.btnDanger} onClick={() => removeItem("esops", e.id)}>×</button></td></tr>;
+            return <tr key={e.id}><td style={s.td}><ECell value={e.company} onChange={v => updateItem("esops", e.id, "company", v)} />{e.notes ? <div style={{ marginTop: "4px" }}><span style={{ display: "inline-block", background: colors.cardAlt, padding: "2px 8px", borderRadius: "4px", marginLeft: "-8px" }}><ECell value={e.notes} onChange={v => updateItem("esops", e.id, "notes", v)} multiline style={{ fontSize: "10px", color: "#c5cae0", background: "transparent" }} /></span></div> : <div style={{ marginTop: "2px" }}><span style={{ fontSize: "8px", color: colors.border, cursor: "pointer" }} onClick={() => updateItem("esops", e.id, "notes", "Add note...")}>+ note</span></div>}{owners.length > 1 && <div style={{ marginTop: "2px" }}><OwnerSelect value={e.owner} owners={owners} onChange={v => updateItem("esops", e.id, "owner", v)} /></div>}</td><td style={s.td}><ECell value={e.strikePrice} type="number" onChange={v => updateItem("esops", e.id, "strikePrice", v)} /></td><td style={s.td}><ECell value={e.currentPrice} type="number" onChange={v => updateItem("esops", e.id, "currentPrice", v)} /></td><td style={s.td}><ECell value={e.quantity} type="number" onChange={v => updateItem("esops", e.id, "quantity", v)} /></td><td style={s.td}><ECell value={e.vestedQty} type="number" onChange={v => updateItem("esops", e.id, "vestedQty", v)} /></td><td style={s.td}><ECell value={e.unvestedQty} type="number" onChange={v => updateItem("esops", e.id, "unvestedQty", v)} /></td><td style={s.td}><span style={{ color: colors.green }}>{fmt(vv, e.currency)}</span></td><td style={s.td}><span style={{ color: colors.yellow }}>{fmt(uv, e.currency)}</span></td><td style={s.td}><button style={s.liqBadge(e.liquid)} onClick={() => updateItem("esops", e.id, "liquid", !e.liquid)}>{e.liquid ? "LIQ" : "ILLIQ"}</button></td><td style={s.td}><button style={s.btnDanger} onClick={() => removeItem("esops", e.id)}>×</button></td></tr>;
           })}</tbody></table></div>
         </div>}
       </div>
@@ -2233,11 +2230,11 @@ export default function App() {
           </span>
         </div>
         <div style={{ marginTop: "10px", marginBottom: "10px" }}>
-          <button style={s.btn} onClick={() => addItem("liabilities", { name: "New Loan", totalAmount: 0, interestRate: 0, monthlyEMI: 0, startDate: "", tenureMonths: 0, currency: "EUR", specialPayments: [] })}>+ ADD LOAN</button>
+          <button style={s.btn} onClick={() => addItem("liabilities", { name: "New Loan", totalAmount: 0, interestRate: 0, monthlyEMI: 0, startDate: "", tenureMonths: 0, currency: "EUR", specialPayments: [], owner: newOwner })}>+ ADD LOAN</button>
         </div>
         {data.liabilities.length === 0 ? <div style={{ fontSize: "10px", color: colors.textMuted, padding: "20px 0", textAlign: "center", letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'IBM Plex Mono', monospace" }}>No liabilities</div> :
         <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-          {data.liabilities.map(l => {
+          {vf(data.liabilities).map(l => {
             const elapsed = getMonthsElapsed(l.startDate);
             const spTotal = (l.specialPayments || []).reduce((s, p) => s + (p.amount || 0), 0);
             const amort = calcAmortization(l.totalAmount, l.interestRate, l.tenureMonths, elapsed, spTotal, l.manualEMI || 0, l.balloonAmount || 0);
@@ -2254,6 +2251,7 @@ export default function App() {
                     <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "10px", letterSpacing: "0.14em", color: colors.textDim, textTransform: "uppercase" }}>Loan</div>
                     <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "15px", color: colors.text, marginTop: "4px", textTransform: "uppercase", letterSpacing: "0.02em" }}>
                       <ECell value={l.name} onChange={v => updateItem("liabilities", l.id, "name", v)} style={{ fontSize: "15px", fontWeight: 500 }} />
+                      {owners.length > 1 && <div style={{ marginTop: "2px" }}><OwnerSelect value={l.owner} owners={owners} onChange={v => updateItem("liabilities", l.id, "owner", v)} /></div>}
                     </div>
                   </div>
                   <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
@@ -2392,9 +2390,9 @@ export default function App() {
       </div>
 
       {/* Amortization · Next 12 Months Chart */}
-      {data.liabilities.length > 0 && (() => {
+      {vf(data.liabilities).length > 0 && (() => {
         const monthly = {};
-        const activeLoans = data.liabilities.filter(l => l.totalAmount > 0 && l.tenureMonths > 0 && (l.interestRate > 0 || l.manualEMI > 0));
+        const activeLoans = vf(data.liabilities).filter(l => l.totalAmount > 0 && l.tenureMonths > 0 && (l.interestRate > 0 || l.manualEMI > 0));
         activeLoans.forEach(l => {
           const elapsed = getMonthsElapsed(l.startDate);
           const spTotal = (l.specialPayments || []).reduce((s, p) => s + (p.amount || 0), 0);
@@ -2869,8 +2867,17 @@ export default function App() {
       </div>
 
       {/* Tab Bar */}
-      <div style={{ display: "flex", borderBottom: `1px solid ${colors.border}`, marginBottom: "20px", gap: "4px", flexWrap: "wrap" }}>
-        {tabs.map(t => <button key={t.key} style={s.tab(tab === t.key)} onClick={() => setTab(t.key)}>{t.label}</button>)}
+      <div style={{ display: "flex", borderBottom: `1px solid ${colors.border}`, marginBottom: "20px", gap: "4px", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>
+          {tabs.map(t => <button key={t.key} style={s.tab(tab === t.key)} onClick={() => setTab(t.key)}>{t.label}</button>)}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: "6px", fontFamily: "'IBM Plex Mono', monospace", fontSize: "10px", letterSpacing: "0.1em", color: colors.textDim, textTransform: "uppercase" }}>
+          <span>Viewing</span>
+          <select style={{ ...s.select, fontSize: "10px", padding: "4px 8px", color: activeOwner === "Household" ? colors.accent : activeOwner === "Self" ? colors.text : colors.green, fontWeight: 500 }} value={activeOwner} onChange={e => setActiveOwner(e.target.value)}>
+            {(data.settings.owners || ["Self"]).map(o => <option key={o} value={o}>{o}</option>)}
+            <option value="Household">Household</option>
+          </select>
+        </div>
       </div>
 
       {tab === "overview" && renderOverview()}
@@ -2896,6 +2903,7 @@ export default function App() {
               <button style={{ ...s.btnOutline, textAlign: "left", border: "none", padding: "6px 10px" }} onClick={() => { setShowPriceSetup(!showPriceSetup); setShowSettingsMenu(false); }}>⚙ PRICE FEED SETUP</button>
               <button style={{ ...s.btnOutline, textAlign: "left", border: "none", padding: "6px 10px" }} onClick={() => { exportData(); setShowSettingsMenu(false); }}>💾 EXPORT DATA</button>
               <button style={{ ...s.btnOutline, textAlign: "left", border: "none", padding: "6px 10px" }} onClick={() => { importData(); setShowSettingsMenu(false); }}>📂 IMPORT DATA</button>
+              <button style={{ ...s.btnOutline, textAlign: "left", border: "none", padding: "6px 10px" }} onClick={() => { setShowFamilySetup(!showFamilySetup); setShowSettingsMenu(false); }}>👥 FAMILY MEMBERS</button>
               <div style={{ borderTop: `1px solid ${colors.border}`, margin: "4px 0" }} />
               <button style={{ ...s.btnDanger, textAlign: "left", border: "none", padding: "6px 10px", background: "transparent" }} onClick={() => { if (confirm("Reset all data?")) save(defaultData); setShowSettingsMenu(false); }}>RESET ALL DATA</button>
             </div>}
