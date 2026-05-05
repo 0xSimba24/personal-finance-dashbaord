@@ -481,14 +481,14 @@ export default function App() {
     const eur = (amount, currency) => toEur(amount, currency, rate, usdRate);
 
     // Owner filtering for portfolio arrays (income/expenses/phases stay Self-only)
-    const of = (arr) => activeOwner === "Household" ? arr : arr.filter(x => (x.owner || "Self") === activeOwner);
-    const vMFs = of(data.mutualFunds);
-    const vEqAccounts = of(data.equityAccounts || []);
-    const vCash = of(data.cashSavings);
-    const vCrypto = of(data.crypto);
-    const vRE = of(data.realEstate || []);
-    const vESOPs = of(data.esops);
-    const vLiab = of(data.liabilities);
+    const ownerF = (arr) => !arr ? [] : activeOwner === "Household" ? arr : arr.filter(x => (x.owner || "Self") === activeOwner);
+    const vMFs = ownerF(data.mutualFunds);
+    const vEqAccounts = ownerF(data.equityAccounts || []);
+    const vCash = ownerF(data.cashSavings);
+    const vCrypto = ownerF(data.crypto);
+    const vRE = ownerF(data.realEstate || []);
+    const vESOPs = ownerF(data.esops);
+    const vLiab = ownerF(data.liabilities);
 
     const totalIncomeEur = data.income.reduce((s, i) => s + eur(i.frequency === "annual" ? i.amount / 12 : i.amount, i.currency), 0);
     const totalFixedEur = data.fixedExpenses.reduce((s, e) => s + eur(e.frequency === "annual" ? e.amount / 12 : e.amount, e.currency), 0);
@@ -639,7 +639,7 @@ export default function App() {
   const [oneOffYear, setOneOffYear] = useState(new Date().getFullYear());
   const [salesYear, setSalesYear] = useState(new Date().getFullYear());
   const [activeOwner, setActiveOwner] = useState("Self");
-  const vf = useCallback((arr) => activeOwner === "Household" ? arr : arr.filter(x => (x.owner || "Self") === activeOwner), [activeOwner]);
+  const vf = useCallback((arr) => !arr ? [] : activeOwner === "Household" ? arr : arr.filter(x => (x.owner || "Self") === activeOwner), [activeOwner]);
   const newOwner = activeOwner === "Household" ? "Self" : activeOwner;
   const owners = data.settings?.owners || ["Self"];
   const [allocFilter, setAllocFilter] = useState({ liquid: true, illiquid: true });
