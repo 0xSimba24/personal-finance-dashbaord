@@ -474,6 +474,11 @@ export default function App() {
     update("equityAccounts", accts);
   }, [data, update]);
 
+  const [activeOwner, setActiveOwner] = useState("Self");
+  const vf = useCallback((arr) => !arr ? [] : activeOwner === "Household" ? arr : arr.filter(x => (x.owner || "Self") === activeOwner), [activeOwner]);
+  const newOwner = activeOwner === "Household" ? "Self" : activeOwner;
+  const owners = data ? (data.settings?.owners || ["Self"]) : ["Self"];
+
   const calc = useMemo(() => {
     if (!data) return {};
     const rate = data.settings.eurToInr;
@@ -638,10 +643,6 @@ export default function App() {
   const [showCompletedPhases, setShowCompletedPhases] = useState(false);
   const [oneOffYear, setOneOffYear] = useState(new Date().getFullYear());
   const [salesYear, setSalesYear] = useState(new Date().getFullYear());
-  const [activeOwner, setActiveOwner] = useState("Self");
-  const vf = useCallback((arr) => !arr ? [] : activeOwner === "Household" ? arr : arr.filter(x => (x.owner || "Self") === activeOwner), [activeOwner]);
-  const newOwner = activeOwner === "Household" ? "Self" : activeOwner;
-  const owners = data.settings?.owners || ["Self"];
   const [allocFilter, setAllocFilter] = useState({ liquid: true, illiquid: true });
 
   const refreshPrices = useCallback(async () => {
