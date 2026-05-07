@@ -588,13 +588,49 @@ export default function App() {
     return sum;
   }, [data]);
 
+  // Helper: compute portfolio totals for a given owner (or "Household" for all)
+  const computePortfolio = useCallback((ownerKey) => {
+    if (!data) return { netWorth: 0, liquidNW: 0, illiquidNW: 0, grossAssets: 0, liabilities: 0, mfTotal: 0, eqTotal: 0, cashTotal: 0, cryptoTotal: 0, reTotal: 0, esopTotal: 0 };
+    const r = data.settings.eurToInr || 90;
+    const usdRate = data.settings.eurToUsd || 1.08;
+    const eur = (amount, currency) => toEur(amount, currency, r, usdRate);
+    const f = (arr) => !arr ? [] : ownerKey === "Household" ? arr : arr.filter(x => (x.owner || "Self") === ownerKey);
+
+    let mfTotal = 0, eqTotal = 0, cashTotal = 0, cryptoTotal = 0, reTotal = 0, esopTotal = 0;
+    let liquidAssets = 0;
+
+    f(data.mutualFunds).forEach(item => { const v = eur(item.units * item.currentPrice, item.currency); mfTotal += v; if (item.liquid) liquidAssets += v; });
+    f(data.equityAccounts || []).forEach(acct => { (acct.stocks || []).forEach(st => { const v = eur(st.quantity * st.currentPrice, st.currency); eqTotal += v; if (st.liquid) liquidAssets += v; }); });
+    f(data.cashSavings).forEach(item => { const v = eur(item.amount, item.currency); cashTotal += v; if (item.liquid) liquidAssets += v; });
+    f(data.crypto).forEach(item => { const v = eur(item.quantity * item.currentPrice, item.currency); cryptoTotal += v; if (item.liquid) liquidAssets += v; });
+    f(data.realEstate || []).forEach(item => { const v = eur(item.value, item.currency); reTotal += v; if (item.liquid) liquidAssets += v; });
+    f(data.esops).forEach(item => { const vv = Math.max(0, item.vestedQty * (item.currentPrice - item.strikePrice)); const uv = Math.max(0, item.unvestedQty * (item.currentPrice - item.strikePrice)); esopTotal += eur(vv + uv, item.currency); if (item.liquid) liquidAssets += eur(vv, item.currency); });
+
+    const liab = f(data.liabilities).reduce((s, l) => {
+      const spTotal = (l.specialPayments || []).reduce((s, p) => s + (p.amount || 0), 0);
+      const amort = calcAmortization(l.totalAmount, l.interestRate, l.tenureMonths, getMonthsElapsed(l.startDate), spTotal, l.manualEMI || 0, l.balloonAmount || 0);
+      return s + eur(amort.remainingPrincipal, l.currency);
+    }, 0);
+
+    const grossAssets = mfTotal + eqTotal + cashTotal + cryptoTotal + reTotal + esopTotal;
+    return { netWorth: grossAssets - liab, liquidNW: liquidAssets, illiquidNW: grossAssets - liquidAssets, grossAssets, liabilities: liab, mfTotal, eqTotal, cashTotal, cryptoTotal, reTotal, esopTotal };
+  }, [data]);
+
   const takeSnapshot = useCallback(() => {
     if (!data || !calc) return;
+    // Compute per-owner breakdown
+    const allOwners = [...(data.settings.owners || ["Self"]), "Household"];
+    const ownerBreakdown = {};
+    allOwners.forEach(o => {
+      const p = computePortfolio(o);
+      ownerBreakdown[o] = { netWorth: p.netWorth, liquidNW: p.liquidNW, illiquidNW: p.illiquidNW, grossAssets: p.grossAssets, liabilities: p.liabilities };
+    });
     update("snapshots", [...data.snapshots, {
       date: localDate(), netWorth: calc.netWorth, liquidNW: calc.liquidNW,
       illiquidNW: calc.illiquidNW, grossAssets: calc.grossAssets, liabilities: calc.totalLiabEur, phase: data.settings.currentPhase,
+      ownerBreakdown,
     }]);
-  }, [data, calc, update]);
+  }, [data, calc, update, computePortfolio]);
 
   const exportData = useCallback(() => {
     if (!data) return;
@@ -800,6 +836,25 @@ export default function App() {
     histEntry.grossAssets = mfTotal + eqTotal + cashTotal + cryptoTotal + reTotal + esopTotal;
     histEntry.netWorth = histEntry.grossAssets - histLiab;
 
+    // Compute per-owner breakdown for price history
+    const histOwners = [...(updated.settings.owners || ["Self"]), "Household"];
+    const byOwner = {};
+    const hf = (arr, o) => !arr ? [] : o === "Household" ? arr : arr.filter(x => (x.owner || "Self") === o);
+    histOwners.forEach(o => {
+      let oMf = 0, oEq = 0, oCash = 0, oCrypto = 0, oRe = 0, oEsop = 0, oLiquid = 0;
+      hf(updated.mutualFunds, o).forEach(f => { const v = toEur(f.units * f.currentPrice, f.currency, histRate, histUsdRate); oMf += v; if (f.liquid) oLiquid += v; });
+      hf(updated.equityAccounts || [], o).forEach(a => { (a.stocks || []).forEach(st => { const v = toEur(st.quantity * st.currentPrice, st.currency, histRate, histUsdRate); oEq += v; if (st.liquid) oLiquid += v; }); });
+      hf(updated.cashSavings, o).forEach(c => { const v = toEur(c.amount, c.currency, histRate, histUsdRate); oCash += v; if (c.liquid) oLiquid += v; });
+      hf(updated.crypto, o).forEach(c => { const v = toEur(c.quantity * c.currentPrice, c.currency, histRate, histUsdRate); oCrypto += v; if (c.liquid) oLiquid += v; });
+      hf(updated.realEstate || [], o).forEach(p => { const v = toEur(p.value, p.currency, histRate, histUsdRate); oRe += v; if (p.liquid) oLiquid += v; });
+      hf(updated.esops, o).forEach(e => { const vv = Math.max(0, e.vestedQty * (e.currentPrice - e.strikePrice)); const uv = Math.max(0, e.unvestedQty * (e.currentPrice - e.strikePrice)); oEsop += toEur(vv + uv, e.currency, histRate, histUsdRate); if (e.liquid) oLiquid += toEur(vv, e.currency, histRate, histUsdRate); });
+      let oLiab = 0;
+      hf(updated.liabilities, o).forEach(l => { const sp = (l.specialPayments || []).reduce((s, p) => s + (p.amount || 0), 0); const am = calcAmortization(l.totalAmount, l.interestRate, l.tenureMonths, getMonthsElapsed(l.startDate), sp, l.manualEMI || 0, l.balloonAmount || 0); oLiab += toEur(am.remainingPrincipal, l.currency, histRate, histUsdRate); });
+      const oGross = oMf + oEq + oCash + oCrypto + oRe + oEsop;
+      byOwner[o] = { netWorth: oGross - oLiab, mfTotal: oMf, eqTotal: oEq, cashTotal: oCash, cryptoTotal: oCrypto, reTotal: oRe, esopTotal: oEsop, grossAssets: oGross, liabilities: oLiab, liquidNW: oLiquid, illiquidNW: oGross - oLiquid };
+    });
+    histEntry.byOwner = byOwner;
+
     // Deduplicate: replace last entry if same day, otherwise append. Cap at 365.
     const today = histEntry.date.slice(0, 10);
     const existing = [...(updated.priceHistory || [])];
@@ -885,7 +940,7 @@ export default function App() {
         <div style={{ display: "flex", flexDirection: "column", gap: "14px", minWidth: 0 }}>
           {/* Main column */}
           {(data.priceHistory || []).length >= 2 && <div style={s.card}>
-            <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: h.netWorth || 0 }))} title="Net Worth" height={200} liveValue={calc.netWorth} />
+            <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: (activeOwner === "Self" || activeOwner === "Household") ? (h.byOwner?.[activeOwner]?.netWorth ?? h.netWorth ?? 0) : (h.byOwner?.[activeOwner]?.netWorth ?? 0) }))} title="Net Worth" height={200} liveValue={calc.netWorth} />
           </div>}
 
       {/* Daily Movers */}
@@ -1819,7 +1874,7 @@ export default function App() {
         {subTab === "mf" && <div style={s.card}>
           <div style={s.flex}><H2>Mutual Funds / ETFs</H2><button style={s.btn} onClick={() => addItem("mutualFunds", { name: "New Fund", units: 0, totalInvested: 0, currentPrice: 0, currency: "INR", liquid: true, owner: newOwner })}>+ Add</button></div>
           {(data.priceHistory || []).length >= 2 && <div style={{ marginBottom: "14px" }}>
-            <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: h.mfTotal || 0 }))} liveValue={calc.mfValue.total} />
+            <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: (activeOwner === "Self" || activeOwner === "Household") ? (h.byOwner?.[activeOwner]?.mfTotal ?? h.mfTotal ?? 0) : (h.byOwner?.[activeOwner]?.mfTotal ?? 0) }))} liveValue={calc.mfValue.total} />
             {data.mutualFunds.filter(f => f.units > 0).length > 1 && <div style={{ marginTop: "14px" }}>
               <MultiLineChart
                 history={data.priceHistory}
@@ -1842,7 +1897,7 @@ export default function App() {
           <div style={s.card}>
             <div style={s.flex}><H2>Direct Equity</H2><button style={s.btn} onClick={() => addItem("equityAccounts", { name: "New Account", currency: "INR", stocks: [], owner: newOwner })}>+ ADD ACCOUNT</button></div>
             {(data.priceHistory || []).length >= 2 ? <div style={{ marginTop: "10px" }}>
-              <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: h.eqTotal || 0 }))} color="#8b5cf6" liveValue={calc.eqValue.total} />
+              <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: (activeOwner === "Self" || activeOwner === "Household") ? (h.byOwner?.[activeOwner]?.eqTotal ?? h.eqTotal ?? 0) : (h.byOwner?.[activeOwner]?.eqTotal ?? 0) }))} color="#8b5cf6" liveValue={calc.eqValue.total} />
               {(data.equityAccounts || []).filter(a => a.stocks.some(st => st.quantity > 0)).length > 1 && <div style={{ marginTop: "14px" }}>
                 <MultiLineChart
                   history={data.priceHistory}
@@ -1952,7 +2007,7 @@ export default function App() {
         {subTab === "cash" && <div style={s.card}>
           <div style={s.flex}><H2>Cash & Savings</H2><button style={s.btn} onClick={() => addItem("cashSavings", { name: "New", type: "Bank", amount: 0, currency: "EUR", liquid: true, owner: newOwner })}>+ Add</button></div>
           {(data.priceHistory || []).length >= 2 && <div style={{ marginBottom: "14px" }}>
-            <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: h.cashTotal || 0 }))} color="#22c997" liveValue={calc.cashValue.total} />
+            <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: (activeOwner === "Self" || activeOwner === "Household") ? (h.byOwner?.[activeOwner]?.cashTotal ?? h.cashTotal ?? 0) : (h.byOwner?.[activeOwner]?.cashTotal ?? 0) }))} color="#22c997" liveValue={calc.cashValue.total} />
           </div>}
           <table style={s.table}><thead><tr><th style={s.th}>Account</th><th style={s.th}>Type</th><th style={s.th}>Amount</th><th style={s.th}>Curr</th><th style={s.th}>EUR</th><th style={s.th}>Liq</th><th style={s.th}></th></tr></thead>
           <tbody>{vf(data.cashSavings).map(c => <tr key={c.id}><td style={s.td}><ECell value={c.name} onChange={v => updateItem("cashSavings", c.id, "name", v)} />{c.notes ? <div style={{ marginTop: "4px" }}><span style={{ display: "inline-block", background: colors.cardAlt, padding: "2px 8px", borderRadius: "4px", marginLeft: "-8px" }}><ECell value={c.notes} onChange={v => updateItem("cashSavings", c.id, "notes", v)} multiline style={{ fontSize: "10px", color: "#c5cae0", background: "transparent" }} /></span></div> : <div style={{ marginTop: "2px" }}><span style={{ fontSize: "8px", color: colors.border, cursor: "pointer" }} onClick={() => updateItem("cashSavings", c.id, "notes", "Add note...")}>+ note</span></div>}{owners.length > 1 && <div style={{ marginTop: "2px" }}><OwnerSelect value={c.owner} owners={owners} onChange={v => updateItem("cashSavings", c.id, "owner", v)} /></div>}</td><td style={s.td}><select style={s.select} value={c.type} onChange={e => updateItem("cashSavings", c.id, "type", e.target.value)}><option>Bank</option><option>FD</option><option>RD</option><option>Other</option></select></td><td style={s.td}><ECell value={c.amount} type="number" onChange={v => updateItem("cashSavings", c.id, "amount", v)} /></td><td style={s.td}><CurrSelect value={c.currency} onChange={v => updateItem("cashSavings", c.id, "currency", v)} /></td><td style={s.td}>{fmt(toEur(c.amount, c.currency, rate))}</td><td style={s.td}><button style={s.liqBadge(c.liquid)} onClick={() => updateItem("cashSavings", c.id, "liquid", !c.liquid)}>{c.liquid ? "LIQ" : "ILLIQ"}</button></td><td style={s.td}><button style={s.btnDanger} onClick={() => removeItem("cashSavings", c.id)}>×</button></td></tr>)}</tbody></table>
@@ -1991,7 +2046,7 @@ export default function App() {
             </div>
           </div>
           {(data.priceHistory || []).length >= 2 && <div style={{ marginBottom: "14px" }}>
-            <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: h.cryptoTotal || 0 }))} color="#f59e0b" liveValue={calc.cryptoValue.total} />
+            <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: (activeOwner === "Self" || activeOwner === "Household") ? (h.byOwner?.[activeOwner]?.cryptoTotal ?? h.cryptoTotal ?? 0) : (h.byOwner?.[activeOwner]?.cryptoTotal ?? 0) }))} color="#f59e0b" liveValue={calc.cryptoValue.total} />
           </div>}
           <div style={{ overflowX: "auto" }}><table style={s.table}><thead><tr><th style={s.th}>Token</th><th style={s.th}>Qty</th><th style={s.th}>Cost</th><th style={s.th}>Current</th><th style={s.th}>Invested</th><th style={s.th}>Value</th><th style={s.th}>P/L</th><th style={s.th}>Liq</th><th style={s.th}></th></tr></thead>
           <tbody>{vf(data.crypto).map(c => {
@@ -2032,7 +2087,7 @@ export default function App() {
         {subTab === "re" && <div style={s.card}>
           <div style={s.flex}><H2>Physical Assets</H2><button style={s.btn} onClick={() => update("realEstate", [...(data.realEstate || []), { id: uid(), name: "Property", value: 0, currency: "INR", liquid: false, owner: newOwner }])}>+ Add</button></div>
           {(data.priceHistory || []).length >= 2 && (data.priceHistory || []).some(h => h.reTotal > 0) && <div style={{ marginBottom: "14px" }}>
-            <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: h.reTotal || 0 }))} color="#3b82f6" liveValue={calc.propValue.total} />
+            <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: (activeOwner === "Self" || activeOwner === "Household") ? (h.byOwner?.[activeOwner]?.reTotal ?? h.reTotal ?? 0) : (h.byOwner?.[activeOwner]?.reTotal ?? 0) }))} color="#3b82f6" liveValue={calc.propValue.total} />
           </div>}
           {(!data.realEstate || data.realEstate.length === 0) ? <div style={{ fontSize: "12px", color: colors.textDim, padding: "12px 0" }}>No real estate</div> :
           <table style={s.table}><thead><tr><th style={s.th}>Name</th><th style={s.th}>Value</th><th style={s.th}>Curr</th><th style={s.th}>EUR</th><th style={s.th}>Liq</th><th style={s.th}></th></tr></thead>
@@ -2042,7 +2097,7 @@ export default function App() {
         {subTab === "esop" && <div style={s.card}>
           <div style={s.flex}><H2>ESOPs</H2><button style={s.btn} onClick={() => addItem("esops", { company: "Company", strikePrice: 0, quantity: 0, currentPrice: 0, vestedQty: 0, unvestedQty: 0, currency: "EUR", liquid: false, owner: newOwner })}>+ Add</button></div>
           {(data.priceHistory || []).length >= 2 && (data.priceHistory || []).some(h => h.esopTotal > 0) && <div style={{ marginBottom: "14px" }}>
-            <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: h.esopTotal || 0 }))} color="#ec4899" liveValue={calc.esopValue.total} />
+            <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: (activeOwner === "Self" || activeOwner === "Household") ? (h.byOwner?.[activeOwner]?.esopTotal ?? h.esopTotal ?? 0) : (h.byOwner?.[activeOwner]?.esopTotal ?? 0) }))} color="#ec4899" liveValue={calc.esopValue.total} />
           </div>}
           <div style={{ overflowX: "auto" }}><table style={s.table}><thead><tr><th style={s.th}>Company</th><th style={s.th}>Strike</th><th style={s.th}>Current</th><th style={s.th}>Total</th><th style={s.th}>Vested</th><th style={s.th}>Unvested</th><th style={s.th}>Vested Val</th><th style={s.th}>Unvested Val</th><th style={s.th}>Liq</th><th style={s.th}></th></tr></thead>
           <tbody>{vf(data.esops).map(e => {
@@ -2444,13 +2499,21 @@ export default function App() {
     const sorted = [...snaps].sort((a, b) => new Date(a.date) - new Date(b.date));
     const reversed = [...snaps].reverse();
 
+    // Helper: extract snapshot values for active owner (falls back to top-level for old data)
+    const sv = (snap, field) => {
+      if (snap.ownerBreakdown?.[activeOwner]?.[field] != null) return snap.ownerBreakdown[activeOwner][field];
+      // For Self or Household, fall back to top-level values (old data is Self)
+      if (activeOwner === "Self" || activeOwner === "Household") return snap[field] ?? 0;
+      return 0; // No data for this owner in old snapshots
+    };
+
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
         {/* Net Worth Chart */}
         <div style={s.card}>
           {snaps.length === 0 ? <div style={{ padding: "40px 0", textAlign: "center", color: colors.textMuted, fontSize: "10px", letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'IBM Plex Mono', monospace" }}>No snapshots yet · Use + Snapshot below</div> :
           <PortfolioChart
-            history={sorted.map(s => ({ date: s.date, value: s.netWorth }))}
+            history={sorted.map(snap => ({ date: snap.date, value: sv(snap, "netWorth") }))}
             title="Net Worth · History"
           />}
         </div>
@@ -2460,7 +2523,7 @@ export default function App() {
           <H2>Assets vs Liabilities</H2>
           <div style={{ marginTop: "10px" }}>
             <MultiLineChart
-              history={sorted.map(s => ({ date: s.date, items: { gross: s.grossAssets || 0, liab: s.liabilities || 0 } }))}
+              history={sorted.map(snap => ({ date: snap.date, items: { gross: sv(snap, "grossAssets"), liab: sv(snap, "liabilities") } }))}
               items={[
                 { key: "gross", label: "Gross Assets" },
                 { key: "liab", label: "Liabilities" },
@@ -2499,17 +2562,19 @@ export default function App() {
             </thead>
             <tbody>{reversed.map((snap, i) => {
               const prev = reversed[i + 1];
-              const delta = prev ? snap.netWorth - prev.netWorth : null;
+              const nw = sv(snap, "netWorth");
+              const prevNw = prev ? sv(prev, "netWorth") : null;
+              const delta = prevNw !== null ? nw - prevNw : null;
               const date = new Date(snap.date).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }).toUpperCase();
               return <tr key={i}>
                 <td style={{ ...s.td, color: colors.accent, fontFamily: "'IBM Plex Mono', monospace" }}>{date}</td>
                 <td style={s.td}>
                   <span style={{ display: "inline-block", padding: "2px 8px", fontSize: "9px", fontFamily: "'IBM Plex Mono', monospace", border: `1px solid ${colors.accent}`, color: colors.accent, letterSpacing: "0.1em", textTransform: "uppercase" }}>P{snap.phase}</span>
                 </td>
-                <td style={{ ...s.td, textAlign: "right" }}>{fmt(snap.netWorth)}</td>
-                <td style={{ ...s.td, textAlign: "right", color: colors.green }}>{fmt(snap.liquidNW)}</td>
-                <td style={{ ...s.td, textAlign: "right", color: colors.violet }}>{fmt(snap.illiquidNW)}</td>
-                <td style={{ ...s.td, textAlign: "right", color: colors.red }}>{fmt(snap.liabilities)}</td>
+                <td style={{ ...s.td, textAlign: "right" }}>{fmt(nw)}</td>
+                <td style={{ ...s.td, textAlign: "right", color: colors.green }}>{fmt(sv(snap, "liquidNW"))}</td>
+                <td style={{ ...s.td, textAlign: "right", color: colors.violet }}>{fmt(sv(snap, "illiquidNW"))}</td>
+                <td style={{ ...s.td, textAlign: "right", color: colors.red }}>{fmt(sv(snap, "liabilities"))}</td>
                 <td style={{ ...s.td, textAlign: "right", color: delta === null ? colors.textMuted : delta >= 0 ? colors.green : colors.red }}>
                   {delta === null ? "—" : `${delta >= 0 ? "+" : ""}${fmt(delta)}`}
                 </td>
