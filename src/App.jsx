@@ -2495,7 +2495,9 @@ export default function App() {
 
   // ─── HISTORY ───
   const renderHistory = () => {
-    const snaps = data.snapshots;
+    // When viewing a non-Self owner, only show snapshots that have ownerBreakdown data
+    const allSnaps = data.snapshots;
+    const snaps = activeOwner === "Self" ? allSnaps : allSnaps.filter(snap => snap.ownerBreakdown?.[activeOwner] != null);
     const sorted = [...snaps].sort((a, b) => new Date(a.date) - new Date(b.date));
     const reversed = [...snaps].reverse();
 
@@ -2579,8 +2581,7 @@ export default function App() {
                   {delta === null ? "—" : `${delta >= 0 ? "+" : ""}${fmt(delta)}`}
                 </td>
                 <td style={s.td}><button style={s.btnDanger} onClick={() => {
-                  const idx = data.snapshots.length - 1 - i;
-                  const n = [...data.snapshots]; n.splice(idx, 1); update("snapshots", n);
+                  update("snapshots", data.snapshots.filter(x => x.date !== snap.date));
                 }}>×</button></td>
               </tr>;
             })}</tbody>
