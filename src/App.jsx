@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { fetchCryptoPrices, fetchHyperliquidPrices, fetchAllMFNavs, fetchEquityPricesFromSheet, generateSheetTemplate, fetchExchangeRates } from "./priceService.js";
 import PortfolioChart, { MultiLineChart, CashFlowBarChart, AmortBarChart } from "./PortfolioChart.jsx";
 import DonutChart from "./DonutChart.jsx";
+import { ResponsiveContainer, AreaChart, Area, CartesianGrid, XAxis, YAxis, Tooltip } from "recharts";
 
 const uid = () => Math.random().toString(36).slice(2, 9);
 const localDate = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
@@ -2277,9 +2278,117 @@ export default function App() {
   };
 
   // ─── LIABILITIES ───
-  const renderLiabilities = () => (
+  const renderLiabilities = () => {
+    // Build projected payoff data
+    const usdRate = data.settings.eurToUsd || 1.08;
+    const activeLoans = vf(data.liabilities).filter(l => l.totalAmount > 0 && l.tenureMonths > 0 && (l.interestRate > 0 || l.manualEMI > 0));
+    const projData = [];
+    if (activeLoans.length > 0) {
+      // Project each loan until payoff, aggregate monthly
+      const monthlyBalances = {};
+      let maxMonth = "";
+      activeLoans.forEach(l => {
+        const elapsed = getMonthsElapsed(l.startDate);
+        const spTotal = (l.specialPayments || []).reduce((s, p) => s + (p.amount || 0), 0);
+        const monthsLeft = Math.max(0, l.tenureMonths - elapsed);
+        const schedule = projectAmortization(l.totalAmount, l.interestRate, l.tenureMonths, elapsed, spTotal, l.manualEMI || 0, l.balloonAmount || 0, monthsLeft);
+        schedule.forEach(row => {
+          const eurBal = toEur(row.balance, l.currency, rate, usdRate);
+          if (!monthlyBalances[row.month]) monthlyBalances[row.month] = 0;
+          monthlyBalances[row.month] += eurBal;
+          if (row.month > maxMonth) maxMonth = row.month;
+        });
+      });
+      // Add current month as starting point
+      const now = new Date();
+      const currentYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      if (!monthlyBalances[currentYm]) monthlyBalances[currentYm] = calc.totalLiabEur;
+      // Add final zero month after last payment
+      if (maxMonth) {
+        const lastDate = new Date(maxMonth + "-01");
+        lastDate.setDate(1);
+        lastDate.setMonth(lastDate.getMonth() + 1);
+        const zeroYm = `${lastDate.getFullYear()}-${String(lastDate.getMonth() + 1).padStart(2, "0")}`;
+        monthlyBalances[zeroYm] = 0;
+      }
+      // Build historical data from price history
+      const histByMonth = {};
+      (data.priceHistory || []).forEach(h => {
+        const d = new Date(h.date);
+        const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+        const val = (activeOwner === "Self" || activeOwner === "Household") ? (h.byOwner?.[activeOwner]?.liabilities ?? h.liabilities ?? 0) : (h.byOwner?.[activeOwner]?.liabilities ?? 0);
+        histByMonth[ym] = val; // keep last value per month
+      });
+      // Merge: all months from earliest historical to projected payoff
+      const allMonths = [...new Set([...Object.keys(histByMonth), ...Object.keys(monthlyBalances)])].sort();
+      allMonths.forEach(ym => {
+        const d = new Date(ym + "-01");
+        const label = d.toLocaleDateString("en-US", { month: "short", year: "2-digit" }).replace(" ", "'");
+        const isHistorical = histByMonth[ym] != null;
+        const isProjected = monthlyBalances[ym] != null;
+        projData.push({
+          label,
+          ym,
+          actual: isHistorical ? histByMonth[ym] : null,
+          projected: isProjected ? monthlyBalances[ym] : null,
+        });
+      });
+      // Bridge: ensure the last historical month also has a projected value for continuity
+      for (let i = projData.length - 1; i >= 0; i--) {
+        if (projData[i].actual != null) {
+          if (projData[i].projected == null) projData[i].projected = projData[i].actual;
+          break;
+        }
+      }
+    }
+
+    return (
     <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-      {/* Liabilities Trend Chart */}
+      {/* Liabilities Payoff Projection */}
+      {projData.length > 0 && <div style={s.card}>
+        <div style={s.flex}>
+          <H2>Liabilities · Payoff Projection</H2>
+          <span style={{ fontSize: "10px", color: colors.textDim, letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'IBM Plex Mono', monospace" }}>
+            {fmt(calc.totalLiabEur)} remaining
+          </span>
+        </div>
+        <div style={{ marginTop: "12px" }}>
+          <ResponsiveContainer width="100%" height={220}>
+            <AreaChart data={projData} margin={{ top: 5, right: 5, bottom: 5, left: 15 }}>
+              <defs>
+                <linearGradient id="liabActualGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={colors.red} stopOpacity={0.3} />
+                  <stop offset="100%" stopColor={colors.red} stopOpacity={0.05} />
+                </linearGradient>
+                <linearGradient id="liabProjGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={colors.accent} stopOpacity={0.15} />
+                  <stop offset="100%" stopColor={colors.accent} stopOpacity={0.02} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid stroke={colors.gridLine} strokeDasharray="2 4" vertical={false} />
+              <XAxis dataKey="label" tick={{ fontSize: 9, fill: colors.textMuted, fontFamily: "'IBM Plex Mono', monospace" }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+              <YAxis tick={{ fontSize: 9, fill: colors.textMuted, fontFamily: "'IBM Plex Mono', monospace" }} axisLine={false} tickLine={false} width={55} tickFormatter={v => v >= 1000 ? `${(v/1000).toFixed(0)}k` : v.toFixed(0)} domain={[0, "auto"]} />
+              <Tooltip
+                contentStyle={{ background: "#000", border: `1px solid ${colors.accent}`, borderRadius: 0, fontSize: "11px", fontFamily: "'IBM Plex Mono', monospace", letterSpacing: "0.05em", padding: "8px 10px" }}
+                labelStyle={{ color: colors.accent, textTransform: "uppercase", fontSize: "10px", letterSpacing: "0.14em", marginBottom: "4px" }}
+                formatter={(v, name) => [fmt(v), name === "actual" ? "Actual" : "Projected"]}
+                cursor={{ stroke: colors.accent, strokeDasharray: "4 4" }}
+              />
+              <Area type="monotone" dataKey="actual" stroke={colors.red} fill="url(#liabActualGrad)" strokeWidth={2} dot={false} connectNulls={false} name="actual" />
+              <Area type="monotone" dataKey="projected" stroke={colors.accent} fill="url(#liabProjGrad)" strokeWidth={1.5} strokeDasharray="6 3" dot={false} connectNulls={false} name="projected" />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", marginTop: "8px", fontFamily: "'IBM Plex Mono', monospace", fontSize: "10px", letterSpacing: "0.1em", textTransform: "uppercase", color: colors.textDim }}>
+          <div style={{ display: "flex", gap: "16px" }}>
+            <span><span style={{ display: "inline-block", width: "16px", height: "2px", background: colors.red, marginRight: "6px", verticalAlign: "middle" }} />Actual</span>
+            <span><span style={{ display: "inline-block", width: "16px", height: "2px", background: colors.accent, marginRight: "6px", verticalAlign: "middle", borderTop: "1px dashed " + colors.accent }} />Projected</span>
+          </div>
+          <span>Y-axis starts at €0</span>
+        </div>
+      </div>}
+
+      {/* OLD: Liabilities Trend Chart (kept for revert — uncomment and remove projection above)
       {(data.priceHistory || []).length >= 2 && <div style={s.card}>
         <PortfolioChart
           history={(data.priceHistory || []).map(h => ({ date: h.date, value: (activeOwner === "Self" || activeOwner === "Household") ? (h.byOwner?.[activeOwner]?.liabilities ?? h.liabilities ?? 0) : (h.byOwner?.[activeOwner]?.liabilities ?? 0) }))}
@@ -2288,6 +2397,7 @@ export default function App() {
           liveValue={calc.totalLiabEur}
         />
       </div>}
+      */}
 
       <div style={s.card}>
         <div style={s.flex}>
@@ -2502,7 +2612,8 @@ export default function App() {
         );
       })()}
     </div>
-  );
+    );
+  };
 
   // ─── HISTORY ───
   const renderHistory = () => {
