@@ -504,6 +504,7 @@ export default function App() {
     let activeYm = calendarYm;
     if (isClosedYm(calendarYm)) {
       const dt = new Date();
+      dt.setDate(1); // Prevent month overflow (e.g., May 31 → "June 31" → July 1)
       dt.setMonth(dt.getMonth() + 1);
       activeYm = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}`;
     }
