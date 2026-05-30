@@ -2299,10 +2299,11 @@ export default function App() {
           if (row.month > maxMonth) maxMonth = row.month;
         });
       });
-      // Add current month as starting point
+      // Add current month as starting point with actual value
       const now = new Date();
       const currentYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-      if (!monthlyBalances[currentYm]) monthlyBalances[currentYm] = calc.totalLiabEur;
+      // Override current month's projected value with actual current balance
+      monthlyBalances[currentYm] = calc.totalLiabEur;
       // Add final zero month after last payment
       if (maxMonth) {
         const lastDate = new Date(maxMonth + "-01");
