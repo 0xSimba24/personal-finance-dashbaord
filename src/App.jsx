@@ -2279,6 +2279,16 @@ export default function App() {
   // ─── LIABILITIES ───
   const renderLiabilities = () => (
     <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+      {/* Liabilities Trend Chart */}
+      {(data.priceHistory || []).length >= 2 && <div style={s.card}>
+        <PortfolioChart
+          history={(data.priceHistory || []).map(h => ({ date: h.date, value: (activeOwner === "Self" || activeOwner === "Household") ? (h.byOwner?.[activeOwner]?.liabilities ?? h.liabilities ?? 0) : (h.byOwner?.[activeOwner]?.liabilities ?? 0) }))}
+          title="Liabilities · Trend"
+          color={colors.red}
+          liveValue={calc.totalLiabEur}
+        />
+      </div>}
+
       <div style={s.card}>
         <div style={s.flex}>
           <H2>Active Liabilities</H2>
