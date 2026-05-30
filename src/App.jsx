@@ -681,6 +681,8 @@ export default function App() {
   const [showCompletedPhases, setShowCompletedPhases] = useState(false);
   const [oneOffYear, setOneOffYear] = useState(new Date().getFullYear());
   const [salesYear, setSalesYear] = useState(new Date().getFullYear());
+  const [simLoanId, setSimLoanId] = useState("");
+  const [simAmount, setSimAmount] = useState(0);
   const [allocFilter, setAllocFilter] = useState({ liquid: true, illiquid: true });
 
   const refreshPrices = useCallback(async () => {
@@ -2283,65 +2285,96 @@ export default function App() {
     const usdRate = data.settings.eurToUsd || 1.08;
     const activeLoans = vf(data.liabilities).filter(l => l.totalAmount > 0 && l.tenureMonths > 0 && (l.interestRate > 0 || l.manualEMI > 0));
     const projData = [];
-    if (activeLoans.length > 0) {
-      // Project each loan until payoff, aggregate monthly
-      const monthlyBalances = {};
+    let simImpact = null; // { monthsSaved, interestSaved }
+
+    // Helper: build monthly balances for a set of loans, with optional extra payment on one loan
+    const buildProjection = (loans, extraLoanId, extraAmount) => {
+      const balances = {};
       let maxMonth = "";
-      activeLoans.forEach(l => {
+      let totalInterest = 0;
+      loans.forEach(l => {
         const elapsed = getMonthsElapsed(l.startDate);
-        const spTotal = (l.specialPayments || []).reduce((s, p) => s + (p.amount || 0), 0);
+        const spTotal = (l.specialPayments || []).reduce((s, p) => s + (p.amount || 0), 0) + (l.id === extraLoanId ? extraAmount : 0);
         const monthsLeft = Math.max(0, l.tenureMonths - elapsed);
         const schedule = projectAmortization(l.totalAmount, l.interestRate, l.tenureMonths, elapsed, spTotal, l.manualEMI || 0, l.balloonAmount || 0, monthsLeft);
         schedule.forEach(row => {
           const eurBal = toEur(row.balance, l.currency, rate, usdRate);
-          if (!monthlyBalances[row.month]) monthlyBalances[row.month] = 0;
-          monthlyBalances[row.month] += eurBal;
+          if (!balances[row.month]) balances[row.month] = 0;
+          balances[row.month] += eurBal;
+          totalInterest += toEur(row.interest, l.currency, rate, usdRate);
           if (row.month > maxMonth) maxMonth = row.month;
         });
       });
-      // Add current month as starting point with actual value
-      const now = new Date();
-      const currentYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-      // Override current month's projected value with actual current balance
-      monthlyBalances[currentYm] = calc.totalLiabEur;
-      // Add final zero month after last payment
+      // Add final zero
       if (maxMonth) {
         const lastDate = new Date(maxMonth + "-01");
         lastDate.setDate(1);
         lastDate.setMonth(lastDate.getMonth() + 1);
         const zeroYm = `${lastDate.getFullYear()}-${String(lastDate.getMonth() + 1).padStart(2, "0")}`;
-        monthlyBalances[zeroYm] = 0;
+        balances[zeroYm] = 0;
       }
-      // Build historical data from price history
+      return { balances, totalInterest, lastMonth: maxMonth };
+    };
+
+    if (activeLoans.length > 0) {
+      // Base projection
+      const base = buildProjection(activeLoans, null, 0);
+      const monthlyBalances = base.balances;
+
+      // Simulated projection (if slider active)
+      let simBalances = null;
+      if (simAmount > 0 && simLoanId) {
+        const sim = buildProjection(activeLoans, simLoanId, simAmount);
+        simBalances = sim.balances;
+        // Compute impact
+        const baseMonths = Object.keys(base.balances).filter(k => base.balances[k] > 0).length;
+        const simMonths = Object.keys(sim.balances).filter(k => sim.balances[k] > 0).length;
+        simImpact = { monthsSaved: Math.max(0, baseMonths - simMonths), interestSaved: Math.max(0, base.totalInterest - sim.totalInterest) };
+        // Override sim current month with adjusted balance
+        const now = new Date();
+        const currentYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+        simBalances[currentYm] = Math.max(0, calc.totalLiabEur - simAmount);
+      }
+
+      // Current month override for base
+      const now = new Date();
+      const currentYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      monthlyBalances[currentYm] = calc.totalLiabEur;
+
+      // Historical data
       const histByMonth = {};
       (data.priceHistory || []).forEach(h => {
         const d = new Date(h.date);
         const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
         const val = (activeOwner === "Self" || activeOwner === "Household") ? (h.byOwner?.[activeOwner]?.liabilities ?? h.liabilities ?? 0) : (h.byOwner?.[activeOwner]?.liabilities ?? 0);
-        histByMonth[ym] = val; // keep last value per month
+        histByMonth[ym] = val;
       });
-      // Merge: all months from earliest historical to projected payoff
-      const allMonths = [...new Set([...Object.keys(histByMonth), ...Object.keys(monthlyBalances)])].sort();
-      allMonths.forEach(ym => {
+
+      // Merge all months
+      const allMonthKeys = [...new Set([...Object.keys(histByMonth), ...Object.keys(monthlyBalances), ...(simBalances ? Object.keys(simBalances) : [])])].sort();
+      allMonthKeys.forEach(ym => {
         const d = new Date(ym + "-01");
         const label = d.toLocaleDateString("en-US", { month: "short", year: "2-digit" }).replace(" ", "'");
-        const isHistorical = histByMonth[ym] != null;
-        const isProjected = monthlyBalances[ym] != null;
         projData.push({
-          label,
-          ym,
-          actual: isHistorical ? histByMonth[ym] : null,
-          projected: isProjected ? monthlyBalances[ym] : null,
+          label, ym,
+          actual: histByMonth[ym] ?? null,
+          projected: monthlyBalances[ym] ?? null,
+          simulated: simBalances ? (simBalances[ym] ?? null) : null,
         });
       });
-      // Bridge: ensure the last historical month also has a projected value for continuity
+      // Bridge
       for (let i = projData.length - 1; i >= 0; i--) {
         if (projData[i].actual != null) {
           if (projData[i].projected == null) projData[i].projected = projData[i].actual;
+          if (simBalances && projData[i].simulated == null) projData[i].simulated = projData[i].actual;
           break;
         }
       }
     }
+
+    // Selected loan details for slider max
+    const simLoan = activeLoans.find(l => l.id === simLoanId);
+    const simMax = simLoan ? toEur(simLoan.totalAmount, simLoan.currency, rate, usdRate) : 30000;
 
     return (
     <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
@@ -2365,6 +2398,10 @@ export default function App() {
                   <stop offset="0%" stopColor={colors.accent} stopOpacity={0.15} />
                   <stop offset="100%" stopColor={colors.accent} stopOpacity={0.02} />
                 </linearGradient>
+                <linearGradient id="liabSimGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={colors.green} stopOpacity={0.2} />
+                  <stop offset="100%" stopColor={colors.green} stopOpacity={0.02} />
+                </linearGradient>
               </defs>
               <CartesianGrid stroke={colors.gridLine} strokeDasharray="2 4" vertical={false} />
               <XAxis dataKey="label" tick={{ fontSize: 9, fill: colors.textMuted, fontFamily: "'IBM Plex Mono', monospace" }} axisLine={false} tickLine={false} interval={Math.max(1, Math.floor(projData.length / 12))} />
@@ -2372,11 +2409,12 @@ export default function App() {
               <Tooltip
                 contentStyle={{ background: "#000", border: `1px solid ${colors.accent}`, borderRadius: 0, fontSize: "11px", fontFamily: "'IBM Plex Mono', monospace", letterSpacing: "0.05em", padding: "8px 10px" }}
                 labelStyle={{ color: colors.accent, textTransform: "uppercase", fontSize: "10px", letterSpacing: "0.14em", marginBottom: "4px" }}
-                formatter={(v, name) => [fmt(v), name === "actual" ? "Actual" : "Projected"]}
+                formatter={(v, name) => [fmt(v), name === "actual" ? "Actual" : name === "simulated" ? "With Payment" : "Projected"]}
                 cursor={{ stroke: colors.accent, strokeDasharray: "4 4" }}
               />
               <Area type="monotone" dataKey="actual" stroke={colors.red} fill="url(#liabActualGrad)" strokeWidth={2} dot={false} connectNulls={false} name="actual" />
-              <Area type="monotone" dataKey="projected" stroke={colors.accent} fill="url(#liabProjGrad)" strokeWidth={1.5} strokeDasharray="6 3" dot={false} connectNulls={false} name="projected" />
+              <Area type="monotone" dataKey="projected" stroke={simAmount > 0 ? colors.textMuted : colors.accent} fill={simAmount > 0 ? "transparent" : "url(#liabProjGrad)"} strokeWidth={simAmount > 0 ? 1 : 1.5} strokeDasharray="6 3" dot={false} connectNulls={false} name="projected" opacity={simAmount > 0 ? 0.4 : 1} />
+              {simAmount > 0 && <Area type="monotone" dataKey="simulated" stroke={colors.green} fill="url(#liabSimGrad)" strokeWidth={2} strokeDasharray="6 3" dot={false} connectNulls={false} name="simulated" />}
             </AreaChart>
           </ResponsiveContainer>
         </div>
@@ -2384,9 +2422,41 @@ export default function App() {
           <div style={{ display: "flex", gap: "16px" }}>
             <span><span style={{ display: "inline-block", width: "16px", height: "2px", background: colors.red, marginRight: "6px", verticalAlign: "middle" }} />Actual</span>
             <span><span style={{ display: "inline-block", width: "16px", height: "2px", background: colors.accent, marginRight: "6px", verticalAlign: "middle", borderTop: "1px dashed " + colors.accent }} />Projected</span>
+            {simAmount > 0 && <span><span style={{ display: "inline-block", width: "16px", height: "2px", background: colors.green, marginRight: "6px", verticalAlign: "middle", borderTop: "1px dashed " + colors.green }} />With Payment</span>}
           </div>
           <span>Y-axis starts at €0</span>
         </div>
+
+        {/* Simulation Panel */}
+        {activeLoans.length > 0 && <div style={{ marginTop: "16px", padding: "14px", background: colors.cardAlt, border: `1px solid ${colors.border}` }}>
+          <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "10px", letterSpacing: "0.14em", textTransform: "uppercase", color: colors.accent, marginBottom: "10px" }}>
+            <span style={{ marginRight: "6px" }}>&gt;</span>Simulate One-Off Payment
+          </div>
+          <div style={{ display: "flex", gap: "16px", alignItems: "center", flexWrap: "wrap" }}>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "10px", color: colors.textDim, letterSpacing: "0.1em", textTransform: "uppercase" }}>Loan</span>
+              <select style={{ ...s.select, fontSize: "11px", minWidth: "160px" }} value={simLoanId} onChange={e => { setSimLoanId(e.target.value); setSimAmount(0); }}>
+                <option value="">— Select loan —</option>
+                {activeLoans.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+              </select>
+            </div>
+            {simLoanId && <div style={{ display: "flex", gap: "8px", alignItems: "center", flex: 1, minWidth: "200px" }}>
+              <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "10px", color: colors.textDim, letterSpacing: "0.1em", textTransform: "uppercase" }}>Amount</span>
+              <input type="range" min={0} max={Math.round(simMax)} step={500} value={simAmount} onChange={e => setSimAmount(parseInt(e.target.value))} style={{ flex: 1, accentColor: colors.green }} />
+              <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "13px", color: colors.green, minWidth: "80px", textAlign: "right" }}>{fmt(simAmount)}</span>
+            </div>}
+          </div>
+          {simImpact && simAmount > 0 && <div style={{ display: "flex", gap: "24px", marginTop: "12px", fontFamily: "'IBM Plex Mono', monospace" }}>
+            <div>
+              <div style={{ fontSize: "9px", letterSpacing: "0.14em", color: colors.textDim, textTransform: "uppercase" }}>Months Saved</div>
+              <div style={{ fontSize: "18px", color: colors.green, fontWeight: 500, marginTop: "2px" }}>{simImpact.monthsSaved}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: "9px", letterSpacing: "0.14em", color: colors.textDim, textTransform: "uppercase" }}>Interest Saved</div>
+              <div style={{ fontSize: "18px", color: colors.green, fontWeight: 500, marginTop: "2px" }}>{fmt(simImpact.interestSaved)}</div>
+            </div>
+          </div>}
+        </div>}
       </div>}
 
       {/* OLD: Liabilities Trend Chart (kept for revert — uncomment and remove projection above)
