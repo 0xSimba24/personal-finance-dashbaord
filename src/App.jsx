@@ -77,6 +77,7 @@ const defaultData = {
   snapshots: [],
   priceHistory: [],
   goals: [],
+  stablecoinLinks: [], // Array of { type: "crypto"|"cash", id } — curated stablecoin holdings group
 };
 
 // ── Storage helpers (localStorage) ──
@@ -2087,6 +2088,61 @@ export default function App() {
             </div>;
           })()}
         </div>}
+
+        {subTab === "crypto" && (() => {
+          const links = data.stablecoinLinks || [];
+          const resolve = (link) => {
+            if (link.type === "cash") { const item = (data.cashSavings || []).find(c => c.id === link.id); return item ? { label: `Cash · ${item.name}`, val: item.amount || 0, ccy: item.currency, found: true } : { label: "Cash · (deleted)", val: 0, ccy: "EUR", found: false }; }
+            const item = (data.crypto || []).find(c => c.id === link.id); return item ? { label: `Crypto · ${item.name}`, val: (item.quantity || 0) * (item.currentPrice || 0), ccy: item.currency, found: true } : { label: "Crypto · (deleted)", val: 0, ccy: "EUR", found: false };
+          };
+          const totalEur = links.reduce((s, link) => { const r = resolve(link); return s + toEur(r.val, r.ccy, rate, data.settings.eurToUsd || 1.08); }, 0);
+          return <div style={{ ...s.card, marginTop: "14px" }}>
+            <div style={s.flex}>
+              <H2>Stablecoins</H2>
+              <span style={{ fontSize: "16px", fontFamily: "'IBM Plex Mono', monospace", fontWeight: 500, color: colors.green }}>{fmtBoth(totalEur, rate)}</span>
+            </div>
+            <details style={{ marginTop: "10px" }} open>
+              <summary style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "10px", color: colors.textDim, letterSpacing: "0.1em", textTransform: "uppercase", cursor: "pointer" }}>
+                <span style={{ color: colors.accent, marginRight: "6px" }}>&gt;</span>Linked Holdings ({links.length})
+              </summary>
+              <div style={{ marginTop: "10px" }}>
+                {links.length > 0 && <div style={{ marginBottom: "8px" }}>
+                  {links.map((link, idx) => {
+                    const r = resolve(link);
+                    return <div key={idx} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontFamily: "'IBM Plex Mono', monospace", fontSize: "11px", padding: "4px 0", color: r.found ? colors.text : colors.textMuted }}>
+                      <span>{r.label}</span>
+                      <span style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+                        <span style={{ color: colors.textDim }}>{r.found ? fmt(r.val, r.ccy) : "—"}</span>
+                        <button style={{ ...s.btnDanger, padding: "1px 5px", fontSize: "9px" }} onClick={() => {
+                          const newLinks = [...links]; newLinks.splice(idx, 1);
+                          update("stablecoinLinks", newLinks);
+                        }}>×</button>
+                      </span>
+                    </div>;
+                  })}
+                </div>}
+                <select style={{ ...s.select, width: "100%", fontSize: "11px" }} value="" onChange={e => {
+                  if (!e.target.value) return;
+                  const [type, id] = e.target.value.split("::");
+                  if (links.some(l => l.type === type && l.id === id)) { e.target.value = ""; return; }
+                  update("stablecoinLinks", [...links, { type, id }]);
+                  e.target.value = "";
+                }}>
+                  <option value="">+ Link holding...</option>
+                  <optgroup label="Crypto">
+                    {(data.crypto || []).map(c => <option key={c.id} value={`crypto::${c.id}`}>{c.name}{c.owner && c.owner !== "Self" ? ` (${c.owner})` : ""}</option>)}
+                  </optgroup>
+                  <optgroup label="Cash & Savings">
+                    {(data.cashSavings || []).map(c => <option key={c.id} value={`cash::${c.id}`}>{c.name}{c.owner && c.owner !== "Self" ? ` (${c.owner})` : ""}</option>)}
+                  </optgroup>
+                </select>
+                <div style={{ marginTop: "8px", fontSize: "9px", color: colors.textMuted, fontFamily: "'IBM Plex Mono', monospace", letterSpacing: "0.05em" }}>
+                  Tracker only · does not affect portfolio totals or allocation · shows all linked holdings regardless of owner view
+                </div>
+              </div>
+            </details>
+          </div>;
+        })()}
 
         {subTab === "re" && <div style={s.card}>
           <div style={s.flex}><H2>Physical Assets</H2><button style={s.btn} onClick={() => update("realEstate", [...(data.realEstate || []), { id: uid(), name: "Property", value: 0, currency: "INR", liquid: false, owner: newOwner }])}>+ Add</button></div>
