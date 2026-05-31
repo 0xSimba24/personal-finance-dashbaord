@@ -2050,9 +2050,60 @@ export default function App() {
               <button style={s.btn} onClick={() => addItem("crypto", { name: "Token", quantity: 0, costPrice: 0, currentPrice: 0, currency: "USD", liquid: true, owner: newOwner })}>+ Add</button>
             </div>
           </div>
-          {(data.priceHistory || []).length >= 2 && <div style={{ marginBottom: "14px" }}>
-            <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: (activeOwner === "Self" || activeOwner === "Household") ? (h.byOwner?.[activeOwner]?.cryptoTotal ?? h.cryptoTotal ?? 0) : (h.byOwner?.[activeOwner]?.cryptoTotal ?? 0) }))} color="#f59e0b" liveValue={calc.cryptoValue.total} />
-          </div>}
+          {(() => {
+            const links = data.stablecoinLinks || [];
+            const palette = ["#4ea96a", "#4ec9e6", "#f5a623", "#9b7ed6", "#d67ab5", "#8a9a5b", "#c4841c"];
+            const resolve = (link) => {
+              if (link.type === "cash") { const item = (data.cashSavings || []).find(c => c.id === link.id); return item ? { label: item.name, val: item.amount || 0, ccy: item.currency, owner: item.owner, found: true } : { label: "(deleted)", val: 0, ccy: "EUR", found: false }; }
+              const item = (data.crypto || []).find(c => c.id === link.id); return item ? { label: item.name, val: (item.quantity || 0) * (item.currentPrice || 0), ccy: item.currency, owner: item.owner, found: true } : { label: "(deleted)", val: 0, ccy: "EUR", found: false };
+            };
+            const resolved = links.map((link, i) => { const r = resolve(link); return { ...r, link, idx: i, eur: toEur(r.val, r.ccy, rate, data.settings.eurToUsd || 1.08), color: palette[i % palette.length] }; });
+            const stableTotal = resolved.reduce((s, r) => s + r.eur, 0);
+            const segments = resolved.filter(r => r.eur > 0).map(r => ({ label: r.label, value: r.eur, color: r.color }));
+            const hasChart = (data.priceHistory || []).length >= 2;
+            return <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: "14px", marginBottom: "14px", alignItems: "start" }} className="crypto-split">
+              {/* Left: crypto trend chart */}
+              <div style={{ minWidth: 0 }}>
+                {hasChart ? <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: (activeOwner === "Self" || activeOwner === "Household") ? (h.byOwner?.[activeOwner]?.cryptoTotal ?? h.cryptoTotal ?? 0) : (h.byOwner?.[activeOwner]?.cryptoTotal ?? 0) }))} color="#f59e0b" liveValue={calc.cryptoValue.total} />
+                : <div style={{ padding: "20px 0", textAlign: "center", fontSize: "10px", color: colors.textDim, letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'IBM Plex Mono', monospace" }}>Need ≥2 data points · Refresh prices to build history</div>}
+              </div>
+              {/* Right: stablecoins */}
+              <div style={{ minWidth: 0, borderLeft: `1px solid ${colors.border}`, paddingLeft: "14px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "8px" }}>
+                  <span style={{ fontSize: "10px", color: colors.text, letterSpacing: "0.14em", textTransform: "uppercase", fontFamily: "'IBM Plex Mono', monospace" }}><span style={{ color: colors.accent, marginRight: "6px" }}>&gt;</span>Stablecoins</span>
+                  <span style={{ fontSize: "14px", fontWeight: 500, color: colors.green, fontFamily: "'IBM Plex Mono', monospace" }}>{fmt(stableTotal)}</span>
+                </div>
+                {segments.length > 0 ? <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+                  <DonutChart segments={segments} size={130} />
+                  <div style={{ width: "100%", marginTop: "8px" }}>
+                    {resolved.map(r => (
+                      <div key={r.idx} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontFamily: "'IBM Plex Mono', monospace", fontSize: "10px", padding: "2px 0", color: r.found ? colors.text : colors.textMuted }}>
+                        <span style={{ display: "flex", alignItems: "center", gap: "6px", minWidth: 0 }}>
+                          <span style={{ width: "8px", height: "8px", background: r.color, flexShrink: 0 }} />
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.label}{r.owner && r.owner !== "Self" ? ` ·${r.owner}` : ""}</span>
+                        </span>
+                        <span style={{ display: "flex", gap: "6px", alignItems: "center", flexShrink: 0 }}>
+                          <span style={{ color: colors.textDim }}>{fmt(r.eur)}</span>
+                          <button style={{ ...s.btnDanger, padding: "0 4px", fontSize: "9px" }} onClick={() => { const nl = [...links]; nl.splice(r.idx, 1); update("stablecoinLinks", nl); }}>×</button>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div> : <div style={{ padding: "16px 0", textAlign: "center", fontSize: "9px", color: colors.textMuted, fontFamily: "'IBM Plex Mono', monospace", letterSpacing: "0.1em", textTransform: "uppercase" }}>No stablecoins linked yet</div>}
+                <select style={{ ...s.select, width: "100%", fontSize: "10px", marginTop: "8px" }} value="" onChange={e => {
+                  if (!e.target.value) return;
+                  const [type, id] = e.target.value.split("::");
+                  if (links.some(l => l.type === type && l.id === id)) { e.target.value = ""; return; }
+                  update("stablecoinLinks", [...links, { type, id }]);
+                  e.target.value = "";
+                }}>
+                  <option value="">+ Link holding...</option>
+                  <optgroup label="Crypto">{(data.crypto || []).map(c => <option key={c.id} value={`crypto::${c.id}`}>{c.name}{c.owner && c.owner !== "Self" ? ` (${c.owner})` : ""}</option>)}</optgroup>
+                  <optgroup label="Cash & Savings">{(data.cashSavings || []).map(c => <option key={c.id} value={`cash::${c.id}`}>{c.name}{c.owner && c.owner !== "Self" ? ` (${c.owner})` : ""}</option>)}</optgroup>
+                </select>
+              </div>
+            </div>;
+          })()}
           <div style={{ overflowX: "auto" }}><table style={s.table}><thead><tr><th style={s.th}>Token</th><th style={s.th}>Qty</th><th style={s.th}>Cost</th><th style={s.th}>Current</th><th style={s.th}>Invested</th><th style={s.th}>Value</th><th style={s.th}>P/L</th><th style={s.th}>Liq</th><th style={s.th}></th></tr></thead>
           <tbody>{vf(data.crypto).map(c => {
             const inv = c.quantity * c.costPrice, cur = c.quantity * c.currentPrice, pl = cur - inv, plP = inv > 0 ? (pl / inv * 100) : 0;
@@ -2088,61 +2139,6 @@ export default function App() {
             </div>;
           })()}
         </div>}
-
-        {subTab === "crypto" && (() => {
-          const links = data.stablecoinLinks || [];
-          const resolve = (link) => {
-            if (link.type === "cash") { const item = (data.cashSavings || []).find(c => c.id === link.id); return item ? { label: `Cash · ${item.name}`, val: item.amount || 0, ccy: item.currency, found: true } : { label: "Cash · (deleted)", val: 0, ccy: "EUR", found: false }; }
-            const item = (data.crypto || []).find(c => c.id === link.id); return item ? { label: `Crypto · ${item.name}`, val: (item.quantity || 0) * (item.currentPrice || 0), ccy: item.currency, found: true } : { label: "Crypto · (deleted)", val: 0, ccy: "EUR", found: false };
-          };
-          const totalEur = links.reduce((s, link) => { const r = resolve(link); return s + toEur(r.val, r.ccy, rate, data.settings.eurToUsd || 1.08); }, 0);
-          return <div style={{ ...s.card, marginTop: "14px" }}>
-            <div style={s.flex}>
-              <H2>Stablecoins</H2>
-              <span style={{ fontSize: "16px", fontFamily: "'IBM Plex Mono', monospace", fontWeight: 500, color: colors.green }}>{fmtBoth(totalEur, rate)}</span>
-            </div>
-            <details style={{ marginTop: "10px" }} open>
-              <summary style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "10px", color: colors.textDim, letterSpacing: "0.1em", textTransform: "uppercase", cursor: "pointer" }}>
-                <span style={{ color: colors.accent, marginRight: "6px" }}>&gt;</span>Linked Holdings ({links.length})
-              </summary>
-              <div style={{ marginTop: "10px" }}>
-                {links.length > 0 && <div style={{ marginBottom: "8px" }}>
-                  {links.map((link, idx) => {
-                    const r = resolve(link);
-                    return <div key={idx} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontFamily: "'IBM Plex Mono', monospace", fontSize: "11px", padding: "4px 0", color: r.found ? colors.text : colors.textMuted }}>
-                      <span>{r.label}</span>
-                      <span style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-                        <span style={{ color: colors.textDim }}>{r.found ? fmt(r.val, r.ccy) : "—"}</span>
-                        <button style={{ ...s.btnDanger, padding: "1px 5px", fontSize: "9px" }} onClick={() => {
-                          const newLinks = [...links]; newLinks.splice(idx, 1);
-                          update("stablecoinLinks", newLinks);
-                        }}>×</button>
-                      </span>
-                    </div>;
-                  })}
-                </div>}
-                <select style={{ ...s.select, width: "100%", fontSize: "11px" }} value="" onChange={e => {
-                  if (!e.target.value) return;
-                  const [type, id] = e.target.value.split("::");
-                  if (links.some(l => l.type === type && l.id === id)) { e.target.value = ""; return; }
-                  update("stablecoinLinks", [...links, { type, id }]);
-                  e.target.value = "";
-                }}>
-                  <option value="">+ Link holding...</option>
-                  <optgroup label="Crypto">
-                    {(data.crypto || []).map(c => <option key={c.id} value={`crypto::${c.id}`}>{c.name}{c.owner && c.owner !== "Self" ? ` (${c.owner})` : ""}</option>)}
-                  </optgroup>
-                  <optgroup label="Cash & Savings">
-                    {(data.cashSavings || []).map(c => <option key={c.id} value={`cash::${c.id}`}>{c.name}{c.owner && c.owner !== "Self" ? ` (${c.owner})` : ""}</option>)}
-                  </optgroup>
-                </select>
-                <div style={{ marginTop: "8px", fontSize: "9px", color: colors.textMuted, fontFamily: "'IBM Plex Mono', monospace", letterSpacing: "0.05em" }}>
-                  Tracker only · does not affect portfolio totals or allocation · shows all linked holdings regardless of owner view
-                </div>
-              </div>
-            </details>
-          </div>;
-        })()}
 
         {subTab === "re" && <div style={s.card}>
           <div style={s.flex}><H2>Physical Assets</H2><button style={s.btn} onClick={() => update("realEstate", [...(data.realEstate || []), { id: uid(), name: "Property", value: 0, currency: "INR", liquid: false, owner: newOwner }])}>+ Add</button></div>

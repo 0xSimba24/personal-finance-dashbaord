@@ -105,7 +105,7 @@ export default function PortfolioChart({ history, title, color = colors.accent, 
             </linearGradient>
           </defs>
           <CartesianGrid stroke={colors.gridLine} strokeDasharray="2 4" vertical={false} />
-          <XAxis dataKey="date" tick={{ fontSize: 9, fill: colors.textMuted, fontFamily: "'IBM Plex Mono', monospace" }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+          <XAxis dataKey="date" tick={{ fontSize: 9, fill: colors.textMuted, fontFamily: "'IBM Plex Mono', monospace" }} axisLine={false} tickLine={false} interval={Math.max(0, Math.floor(chartData.length / 8))} minTickGap={20} />
           <YAxis tick={{ fontSize: 9, fill: colors.textMuted, fontFamily: "'IBM Plex Mono', monospace" }} axisLine={false} tickLine={false} width={55} tickFormatter={v => v >= 1000 ? `${(v/1000).toFixed(0)}k` : v.toFixed(0)} domain={["auto", "auto"]} />
           <Tooltip
             contentStyle={{ background: "#000", border: `1px solid ${colors.accent}`, borderRadius: 0, fontSize: "11px", fontFamily: "'IBM Plex Mono', monospace", letterSpacing: "0.05em" }}
@@ -168,7 +168,7 @@ export function MultiLineChart({ history, items, title, currency = "EUR", height
       <ResponsiveContainer width="100%" height={height}>
         <LineChart data={chartData} margin={{ top: 5, right: 5, bottom: 5, left: 15 }}>
           <CartesianGrid stroke={colors.gridLine} strokeDasharray="2 4" vertical={false} />
-          <XAxis dataKey="date" tick={{ fontSize: 9, fill: colors.textMuted, fontFamily: "'IBM Plex Mono', monospace" }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+          <XAxis dataKey="date" tick={{ fontSize: 9, fill: colors.textMuted, fontFamily: "'IBM Plex Mono', monospace" }} axisLine={false} tickLine={false} interval={Math.max(0, Math.floor(chartData.length / 8))} minTickGap={20} />
           <YAxis tick={{ fontSize: 9, fill: colors.textMuted, fontFamily: "'IBM Plex Mono', monospace" }} axisLine={false} tickLine={false} width={55} tickFormatter={v => v >= 1000 ? `${(v/1000).toFixed(0)}k` : v.toFixed(0)} domain={["auto", "auto"]} />
           <Tooltip
             contentStyle={{ background: "#000", border: `1px solid ${colors.accent}`, borderRadius: 0, fontSize: "11px", fontFamily: "'IBM Plex Mono', monospace", letterSpacing: "0.05em" }}
