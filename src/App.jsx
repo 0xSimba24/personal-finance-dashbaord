@@ -2020,8 +2020,7 @@ export default function App() {
         </div>}
 
         {subTab === "crypto" && <div style={s.card}>
-          <div style={s.flex}>
-            <H2>Crypto</H2>
+          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "4px" }}>
             <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
               <select
                 style={{ ...s.select, fontSize: "11px", padding: "4px 8px" }}
@@ -2064,7 +2063,7 @@ export default function App() {
             return <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: "14px", marginBottom: "14px", alignItems: "start" }} className="crypto-split">
               {/* Left: crypto trend chart */}
               <div style={{ minWidth: 0 }}>
-                {hasChart ? <PortfolioChart history={(data.priceHistory || []).map(h => ({ date: h.date, value: (activeOwner === "Self" || activeOwner === "Household") ? (h.byOwner?.[activeOwner]?.cryptoTotal ?? h.cryptoTotal ?? 0) : (h.byOwner?.[activeOwner]?.cryptoTotal ?? 0) }))} color="#f59e0b" liveValue={calc.cryptoValue.total} />
+                {hasChart ? <PortfolioChart title="Crypto" history={(data.priceHistory || []).map(h => ({ date: h.date, value: (activeOwner === "Self" || activeOwner === "Household") ? (h.byOwner?.[activeOwner]?.cryptoTotal ?? h.cryptoTotal ?? 0) : (h.byOwner?.[activeOwner]?.cryptoTotal ?? 0) }))} color="#f59e0b" liveValue={calc.cryptoValue.total} />
                 : <div style={{ padding: "20px 0", textAlign: "center", fontSize: "10px", color: colors.textDim, letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'IBM Plex Mono', monospace" }}>Need ≥2 data points · Refresh prices to build history</div>}
               </div>
               {/* Right: stablecoins */}
@@ -2075,7 +2074,12 @@ export default function App() {
                 </div>
                 {segments.length > 0 ? <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
                   <DonutChart segments={segments} size={130} />
-                  <div style={{ width: "100%", marginTop: "8px" }}>
+                </div> : <div style={{ padding: "16px 0", textAlign: "center", fontSize: "9px", color: colors.textMuted, fontFamily: "'IBM Plex Mono', monospace", letterSpacing: "0.1em", textTransform: "uppercase" }}>No stablecoins linked yet</div>}
+                <details style={{ marginTop: "10px" }}>
+                  <summary style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "9px", color: colors.textDim, letterSpacing: "0.14em", textTransform: "uppercase", cursor: "pointer" }}>
+                    <span style={{ color: colors.accent, marginRight: "6px" }}>&gt;</span>Manage ({resolved.length})
+                  </summary>
+                  <div style={{ marginTop: "8px" }}>
                     {resolved.map(r => (
                       <div key={r.idx} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontFamily: "'IBM Plex Mono', monospace", fontSize: "10px", padding: "2px 0", color: r.found ? colors.text : colors.textMuted }}>
                         <span style={{ display: "flex", alignItems: "center", gap: "6px", minWidth: 0 }}>
@@ -2088,19 +2092,19 @@ export default function App() {
                         </span>
                       </div>
                     ))}
+                    <select style={{ ...s.select, width: "100%", fontSize: "10px", marginTop: "8px" }} value="" onChange={e => {
+                      if (!e.target.value) return;
+                      const [type, id] = e.target.value.split("::");
+                      if (links.some(l => l.type === type && l.id === id)) { e.target.value = ""; return; }
+                      update("stablecoinLinks", [...links, { type, id }]);
+                      e.target.value = "";
+                    }}>
+                      <option value="">+ Link holding...</option>
+                      <optgroup label="Crypto">{(data.crypto || []).map(c => <option key={c.id} value={`crypto::${c.id}`}>{c.name}{c.owner && c.owner !== "Self" ? ` (${c.owner})` : ""}</option>)}</optgroup>
+                      <optgroup label="Cash & Savings">{(data.cashSavings || []).map(c => <option key={c.id} value={`cash::${c.id}`}>{c.name}{c.owner && c.owner !== "Self" ? ` (${c.owner})` : ""}</option>)}</optgroup>
+                    </select>
                   </div>
-                </div> : <div style={{ padding: "16px 0", textAlign: "center", fontSize: "9px", color: colors.textMuted, fontFamily: "'IBM Plex Mono', monospace", letterSpacing: "0.1em", textTransform: "uppercase" }}>No stablecoins linked yet</div>}
-                <select style={{ ...s.select, width: "100%", fontSize: "10px", marginTop: "8px" }} value="" onChange={e => {
-                  if (!e.target.value) return;
-                  const [type, id] = e.target.value.split("::");
-                  if (links.some(l => l.type === type && l.id === id)) { e.target.value = ""; return; }
-                  update("stablecoinLinks", [...links, { type, id }]);
-                  e.target.value = "";
-                }}>
-                  <option value="">+ Link holding...</option>
-                  <optgroup label="Crypto">{(data.crypto || []).map(c => <option key={c.id} value={`crypto::${c.id}`}>{c.name}{c.owner && c.owner !== "Self" ? ` (${c.owner})` : ""}</option>)}</optgroup>
-                  <optgroup label="Cash & Savings">{(data.cashSavings || []).map(c => <option key={c.id} value={`cash::${c.id}`}>{c.name}{c.owner && c.owner !== "Self" ? ` (${c.owner})` : ""}</option>)}</optgroup>
-                </select>
+                </details>
               </div>
             </div>;
           })()}
