@@ -2044,7 +2044,8 @@ export default function App() {
                 <div style={{ marginBottom: "10px" }}>
                   <div style={{ fontSize: "10px", color: colors.text, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: "4px", fontFamily: mono }}><span style={{ color: colors.accent, marginRight: "6px" }}>&gt;</span>Stablecoins</div>
                   <div style={{ display: "flex", alignItems: "baseline", gap: "10px" }}>
-                    <span style={{ fontSize: "20px", fontWeight: 500, fontFamily: mono, color: colors.green }}>{fmt(stableTotal)}</span>
+                    <span style={{ fontSize: "20px", fontWeight: 500, fontFamily: mono, color: colors.text }}>{fmt(stableTotal)}</span>
+                    <span style={{ fontSize: "11px", color: colors.textDim, fontFamily: mono }}>${(stableTotal * (data.settings.eurToUsd || 1.08)).toLocaleString("en-US", { maximumFractionDigits: 0 })}</span>
                   </div>
                 </div>
                 {/* Body — donut centered in remaining space */}
