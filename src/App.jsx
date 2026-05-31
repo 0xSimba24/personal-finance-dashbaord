@@ -2020,7 +2020,75 @@ export default function App() {
         </div>}
 
         {subTab === "crypto" && <div style={s.card}>
-          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "4px" }}>
+          {(() => {
+            const links = data.stablecoinLinks || [];
+            const palette = ["#4ea96a", "#4ec9e6", "#f5a623", "#9b7ed6", "#d67ab5", "#8a9a5b", "#c4841c"];
+            const resolve = (link) => {
+              if (link.type === "cash") { const item = (data.cashSavings || []).find(c => c.id === link.id); return item ? { label: item.name, val: item.amount || 0, ccy: item.currency, owner: item.owner, found: true } : { label: "(deleted)", val: 0, ccy: "EUR", found: false }; }
+              const item = (data.crypto || []).find(c => c.id === link.id); return item ? { label: item.name, val: (item.quantity || 0) * (item.currentPrice || 0), ccy: item.currency, owner: item.owner, found: true } : { label: "(deleted)", val: 0, ccy: "EUR", found: false };
+            };
+            const resolved = links.map((link, i) => { const r = resolve(link); return { ...r, link, idx: i, eur: toEur(r.val, r.ccy, rate, data.settings.eurToUsd || 1.08), color: palette[i % palette.length] }; });
+            const stableTotal = resolved.reduce((s, r) => s + r.eur, 0);
+            const segments = resolved.filter(r => r.eur > 0).map(r => ({ label: r.label, value: r.eur, color: r.color }));
+            const hasChart = (data.priceHistory || []).length >= 2;
+            const mono = "'IBM Plex Mono', monospace";
+            return <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: "0", marginBottom: "14px", alignItems: "stretch" }} className="crypto-split">
+              {/* Left: crypto trend chart */}
+              <div style={{ minWidth: 0, paddingRight: "18px" }}>
+                {hasChart ? <PortfolioChart title="Crypto" history={(data.priceHistory || []).map(h => ({ date: h.date, value: (activeOwner === "Self" || activeOwner === "Household") ? (h.byOwner?.[activeOwner]?.cryptoTotal ?? h.cryptoTotal ?? 0) : (h.byOwner?.[activeOwner]?.cryptoTotal ?? 0) }))} color="#f59e0b" liveValue={calc.cryptoValue.total} />
+                : <div style={{ padding: "20px 0", textAlign: "center", fontSize: "10px", color: colors.textDim, letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: mono }}>Need ≥2 data points · Refresh prices to build history</div>}
+              </div>
+              {/* Right: stablecoins — matches chart header layout, fills column height */}
+              <div style={{ minWidth: 0, borderLeft: `1px solid ${colors.border}`, paddingLeft: "18px", display: "flex", flexDirection: "column" }}>
+                {/* Header — same structure as PortfolioChart header */}
+                <div style={{ marginBottom: "10px" }}>
+                  <div style={{ fontSize: "10px", color: colors.text, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: "4px", fontFamily: mono }}><span style={{ color: colors.accent, marginRight: "6px" }}>&gt;</span>Stablecoins</div>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: "10px" }}>
+                    <span style={{ fontSize: "20px", fontWeight: 500, fontFamily: mono, color: colors.green }}>{fmt(stableTotal)}</span>
+                  </div>
+                </div>
+                {/* Body — donut centered in remaining space */}
+                <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", minHeight: 0 }}>
+                  {segments.length > 0 ? <DonutChart segments={segments} size={140} />
+                  : <div style={{ padding: "16px 0", textAlign: "center", fontSize: "9px", color: colors.textMuted, fontFamily: mono, letterSpacing: "0.1em", textTransform: "uppercase" }}>No stablecoins linked yet</div>}
+                </div>
+                {/* Manage — pinned at bottom */}
+                <details style={{ marginTop: "10px" }}>
+                  <summary style={{ fontFamily: mono, fontSize: "9px", color: colors.textDim, letterSpacing: "0.14em", textTransform: "uppercase", cursor: "pointer" }}>
+                    <span style={{ color: colors.accent, marginRight: "6px" }}>&gt;</span>Manage ({resolved.length})
+                  </summary>
+                  <div style={{ marginTop: "8px" }}>
+                    {resolved.map(r => (
+                      <div key={r.idx} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontFamily: mono, fontSize: "10px", padding: "2px 0", color: r.found ? colors.text : colors.textMuted }}>
+                        <span style={{ display: "flex", alignItems: "center", gap: "6px", minWidth: 0 }}>
+                          <span style={{ width: "8px", height: "8px", background: r.color, flexShrink: 0 }} />
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.label}{r.owner && r.owner !== "Self" ? ` ·${r.owner}` : ""}</span>
+                        </span>
+                        <span style={{ display: "flex", gap: "6px", alignItems: "center", flexShrink: 0 }}>
+                          <span style={{ color: colors.textDim }}>{fmt(r.eur)}</span>
+                          <button style={{ ...s.btnDanger, padding: "0 4px", fontSize: "9px" }} onClick={() => { const nl = [...links]; nl.splice(r.idx, 1); update("stablecoinLinks", nl); }}>×</button>
+                        </span>
+                      </div>
+                    ))}
+                    <select style={{ ...s.select, width: "100%", fontSize: "10px", marginTop: "8px" }} value="" onChange={e => {
+                      if (!e.target.value) return;
+                      const [type, id] = e.target.value.split("::");
+                      if (links.some(l => l.type === type && l.id === id)) { e.target.value = ""; return; }
+                      update("stablecoinLinks", [...links, { type, id }]);
+                      e.target.value = "";
+                    }}>
+                      <option value="">+ Link holding...</option>
+                      <optgroup label="Crypto">{(data.crypto || []).map(c => <option key={c.id} value={`crypto::${c.id}`}>{c.name}{c.owner && c.owner !== "Self" ? ` (${c.owner})` : ""}</option>)}</optgroup>
+                      <optgroup label="Cash & Savings">{(data.cashSavings || []).map(c => <option key={c.id} value={`cash::${c.id}`}>{c.name}{c.owner && c.owner !== "Self" ? ` (${c.owner})` : ""}</option>)}</optgroup>
+                    </select>
+                  </div>
+                </details>
+              </div>
+            </div>;
+          })()}
+          {/* Toolbar above table */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px", paddingTop: "10px", borderTop: `1px solid ${colors.border}` }}>
+            <span style={{ fontSize: "10px", color: colors.textDim, letterSpacing: "0.14em", textTransform: "uppercase", fontFamily: "'IBM Plex Mono', monospace" }}>Tokens</span>
             <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
               <select
                 style={{ ...s.select, fontSize: "11px", padding: "4px 8px" }}
@@ -2049,65 +2117,6 @@ export default function App() {
               <button style={s.btn} onClick={() => addItem("crypto", { name: "Token", quantity: 0, costPrice: 0, currentPrice: 0, currency: "USD", liquid: true, owner: newOwner })}>+ Add</button>
             </div>
           </div>
-          {(() => {
-            const links = data.stablecoinLinks || [];
-            const palette = ["#4ea96a", "#4ec9e6", "#f5a623", "#9b7ed6", "#d67ab5", "#8a9a5b", "#c4841c"];
-            const resolve = (link) => {
-              if (link.type === "cash") { const item = (data.cashSavings || []).find(c => c.id === link.id); return item ? { label: item.name, val: item.amount || 0, ccy: item.currency, owner: item.owner, found: true } : { label: "(deleted)", val: 0, ccy: "EUR", found: false }; }
-              const item = (data.crypto || []).find(c => c.id === link.id); return item ? { label: item.name, val: (item.quantity || 0) * (item.currentPrice || 0), ccy: item.currency, owner: item.owner, found: true } : { label: "(deleted)", val: 0, ccy: "EUR", found: false };
-            };
-            const resolved = links.map((link, i) => { const r = resolve(link); return { ...r, link, idx: i, eur: toEur(r.val, r.ccy, rate, data.settings.eurToUsd || 1.08), color: palette[i % palette.length] }; });
-            const stableTotal = resolved.reduce((s, r) => s + r.eur, 0);
-            const segments = resolved.filter(r => r.eur > 0).map(r => ({ label: r.label, value: r.eur, color: r.color }));
-            const hasChart = (data.priceHistory || []).length >= 2;
-            return <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: "14px", marginBottom: "14px", alignItems: "start" }} className="crypto-split">
-              {/* Left: crypto trend chart */}
-              <div style={{ minWidth: 0 }}>
-                {hasChart ? <PortfolioChart title="Crypto" history={(data.priceHistory || []).map(h => ({ date: h.date, value: (activeOwner === "Self" || activeOwner === "Household") ? (h.byOwner?.[activeOwner]?.cryptoTotal ?? h.cryptoTotal ?? 0) : (h.byOwner?.[activeOwner]?.cryptoTotal ?? 0) }))} color="#f59e0b" liveValue={calc.cryptoValue.total} />
-                : <div style={{ padding: "20px 0", textAlign: "center", fontSize: "10px", color: colors.textDim, letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'IBM Plex Mono', monospace" }}>Need ≥2 data points · Refresh prices to build history</div>}
-              </div>
-              {/* Right: stablecoins */}
-              <div style={{ minWidth: 0, borderLeft: `1px solid ${colors.border}`, paddingLeft: "14px" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "8px" }}>
-                  <span style={{ fontSize: "10px", color: colors.text, letterSpacing: "0.14em", textTransform: "uppercase", fontFamily: "'IBM Plex Mono', monospace" }}><span style={{ color: colors.accent, marginRight: "6px" }}>&gt;</span>Stablecoins</span>
-                  <span style={{ fontSize: "14px", fontWeight: 500, color: colors.green, fontFamily: "'IBM Plex Mono', monospace" }}>{fmt(stableTotal)}</span>
-                </div>
-                {segments.length > 0 ? <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-                  <DonutChart segments={segments} size={130} />
-                </div> : <div style={{ padding: "16px 0", textAlign: "center", fontSize: "9px", color: colors.textMuted, fontFamily: "'IBM Plex Mono', monospace", letterSpacing: "0.1em", textTransform: "uppercase" }}>No stablecoins linked yet</div>}
-                <details style={{ marginTop: "10px" }}>
-                  <summary style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "9px", color: colors.textDim, letterSpacing: "0.14em", textTransform: "uppercase", cursor: "pointer" }}>
-                    <span style={{ color: colors.accent, marginRight: "6px" }}>&gt;</span>Manage ({resolved.length})
-                  </summary>
-                  <div style={{ marginTop: "8px" }}>
-                    {resolved.map(r => (
-                      <div key={r.idx} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontFamily: "'IBM Plex Mono', monospace", fontSize: "10px", padding: "2px 0", color: r.found ? colors.text : colors.textMuted }}>
-                        <span style={{ display: "flex", alignItems: "center", gap: "6px", minWidth: 0 }}>
-                          <span style={{ width: "8px", height: "8px", background: r.color, flexShrink: 0 }} />
-                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.label}{r.owner && r.owner !== "Self" ? ` ·${r.owner}` : ""}</span>
-                        </span>
-                        <span style={{ display: "flex", gap: "6px", alignItems: "center", flexShrink: 0 }}>
-                          <span style={{ color: colors.textDim }}>{fmt(r.eur)}</span>
-                          <button style={{ ...s.btnDanger, padding: "0 4px", fontSize: "9px" }} onClick={() => { const nl = [...links]; nl.splice(r.idx, 1); update("stablecoinLinks", nl); }}>×</button>
-                        </span>
-                      </div>
-                    ))}
-                    <select style={{ ...s.select, width: "100%", fontSize: "10px", marginTop: "8px" }} value="" onChange={e => {
-                      if (!e.target.value) return;
-                      const [type, id] = e.target.value.split("::");
-                      if (links.some(l => l.type === type && l.id === id)) { e.target.value = ""; return; }
-                      update("stablecoinLinks", [...links, { type, id }]);
-                      e.target.value = "";
-                    }}>
-                      <option value="">+ Link holding...</option>
-                      <optgroup label="Crypto">{(data.crypto || []).map(c => <option key={c.id} value={`crypto::${c.id}`}>{c.name}{c.owner && c.owner !== "Self" ? ` (${c.owner})` : ""}</option>)}</optgroup>
-                      <optgroup label="Cash & Savings">{(data.cashSavings || []).map(c => <option key={c.id} value={`cash::${c.id}`}>{c.name}{c.owner && c.owner !== "Self" ? ` (${c.owner})` : ""}</option>)}</optgroup>
-                    </select>
-                  </div>
-                </details>
-              </div>
-            </div>;
-          })()}
           <div style={{ overflowX: "auto" }}><table style={s.table}><thead><tr><th style={s.th}>Token</th><th style={s.th}>Qty</th><th style={s.th}>Cost</th><th style={s.th}>Current</th><th style={s.th}>Invested</th><th style={s.th}>Value</th><th style={s.th}>P/L</th><th style={s.th}>Liq</th><th style={s.th}></th></tr></thead>
           <tbody>{vf(data.crypto).map(c => {
             const inv = c.quantity * c.costPrice, cur = c.quantity * c.currentPrice, pl = cur - inv, plP = inv > 0 ? (pl / inv * 100) : 0;
