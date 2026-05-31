@@ -682,6 +682,8 @@ export default function App() {
   const [showCompletedPhases, setShowCompletedPhases] = useState(false);
   const [oneOffYear, setOneOffYear] = useState(new Date().getFullYear());
   const [salesYear, setSalesYear] = useState(new Date().getFullYear());
+  const [cryptoSearch, setCryptoSearch] = useState("");
+  const [cryptoSort, setCryptoSort] = useState({ key: "name", dir: "asc" });
   const [simLoanId, setSimLoanId] = useState("");
   const [simAmount, setSimAmount] = useState(0);
   const [allocFilter, setAllocFilter] = useState({ liquid: true, illiquid: true });
@@ -2088,8 +2090,18 @@ export default function App() {
             </div>;
           })()}
           {/* Toolbar above table */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px", paddingTop: "10px", borderTop: `1px solid ${colors.border}` }}>
-            <span style={{ fontSize: "10px", color: colors.textDim, letterSpacing: "0.14em", textTransform: "uppercase", fontFamily: "'IBM Plex Mono', monospace" }}>Tokens</span>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px", paddingTop: "10px", borderTop: `1px solid ${colors.border}`, gap: "10px", flexWrap: "wrap" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <span style={{ fontSize: "10px", color: colors.textDim, letterSpacing: "0.14em", textTransform: "uppercase", fontFamily: "'IBM Plex Mono', monospace" }}>Tokens</span>
+              <input
+                type="text"
+                placeholder="Search…"
+                value={cryptoSearch}
+                onChange={e => setCryptoSearch(e.target.value)}
+                style={{ ...s.input, fontSize: "11px", width: "140px", padding: "4px 8px" }}
+              />
+              {cryptoSearch && <button style={{ ...s.btnDanger, padding: "1px 6px", fontSize: "10px" }} onClick={() => setCryptoSearch("")}>×</button>}
+            </div>
             <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
               <select
                 style={{ ...s.select, fontSize: "11px", padding: "4px 8px" }}
@@ -2118,8 +2130,33 @@ export default function App() {
               <button style={s.btn} onClick={() => addItem("crypto", { name: "Token", quantity: 0, costPrice: 0, currentPrice: 0, currency: "USD", liquid: true, owner: newOwner })}>+ Add</button>
             </div>
           </div>
-          <div style={{ overflowX: "auto" }}><table style={s.table}><thead><tr><th style={s.th}>Token</th><th style={s.th}>Qty</th><th style={s.th}>Cost</th><th style={s.th}>Current</th><th style={s.th}>Invested</th><th style={s.th}>Value</th><th style={s.th}>P/L</th><th style={s.th}>Liq</th><th style={s.th}></th></tr></thead>
-          <tbody>{vf(data.crypto).map(c => {
+          {(() => {
+            const sortClick = (key) => setCryptoSort(prev => prev.key === key ? { key, dir: prev.dir === "asc" ? "desc" : "asc" } : { key, dir: key === "name" ? "asc" : "desc" });
+            const arrow = (key) => cryptoSort.key === key ? (cryptoSort.dir === "asc" ? " ▲" : " ▼") : "";
+            const sortableTh = (label, key, align) => <th style={{ ...s.th, cursor: "pointer", textAlign: align || "left", userSelect: "none", color: cryptoSort.key === key ? colors.accent : undefined }} onClick={() => sortClick(key)}>{label}{arrow(key)}</th>;
+            const usdR = data.settings.eurToUsd || 1.08;
+            let rows = vf(data.crypto);
+            // Filter by search
+            const q = cryptoSearch.trim().toLowerCase();
+            if (q) rows = rows.filter(c => (c.name || "").toLowerCase().includes(q));
+            // Sort
+            const valEur = (c) => toEur((c.quantity || 0) * (c.currentPrice || 0), c.currency, rate, usdR);
+            const plEur = (c) => toEur((c.quantity || 0) * (c.currentPrice || 0) - (c.quantity || 0) * (c.costPrice || 0), c.currency, rate, usdR);
+            rows = [...rows].sort((a, b) => {
+              let av, bv;
+              if (cryptoSort.key === "name") { av = (a.name || "").toLowerCase(); bv = (b.name || "").toLowerCase(); return cryptoSort.dir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av); }
+              if (cryptoSort.key === "value") { av = valEur(a); bv = valEur(b); }
+              else if (cryptoSort.key === "pl") { av = plEur(a); bv = plEur(b); }
+              else { av = 0; bv = 0; }
+              return cryptoSort.dir === "asc" ? av - bv : bv - av;
+            });
+            return <div style={{ overflowX: "auto" }}><table style={s.table}><thead><tr>
+              {sortableTh("Token", "name")}
+              <th style={s.th}>Qty</th><th style={s.th}>Cost</th><th style={s.th}>Current</th><th style={s.th}>Invested</th>
+              {sortableTh("Value", "value")}
+              {sortableTh("P/L", "pl")}
+              <th style={s.th}>Liq</th><th style={s.th}></th></tr></thead>
+          <tbody>{rows.map(c => {
             const inv = c.quantity * c.costPrice, cur = c.quantity * c.currentPrice, pl = cur - inv, plP = inv > 0 ? (pl / inv * 100) : 0;
             const missingPriceConfig = !c.coingeckoId && !c.hyperliquidTicker && (c.currentPrice || 0) === 0;
             return <tr key={c.id}>
@@ -2140,7 +2177,8 @@ export default function App() {
               <td style={s.td}><button style={s.liqBadge(c.liquid)} onClick={() => updateItem("crypto", c.id, "liquid", !c.liquid)}>{c.liquid ? "LIQ" : "ILLIQ"}</button></td>
               <td style={s.td}><button style={s.btnDanger} onClick={() => removeItem("crypto", c.id)}>×</button></td>
             </tr>;
-          })}</tbody></table></div>
+          })}</tbody></table></div>;
+          })()}
           {(() => {
             const liquidUsd = data.crypto.filter(c => c.liquid).reduce((s, c) => s + c.quantity * c.currentPrice, 0);
             const illiquidUsd = data.crypto.filter(c => !c.liquid).reduce((s, c) => s + c.quantity * c.currentPrice, 0);
