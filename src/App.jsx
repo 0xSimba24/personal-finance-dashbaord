@@ -541,8 +541,8 @@ export default function App() {
     const propValue = vRE.reduce((s, p) => ({ total: s.total + eur(p.value, p.currency), liquid: s.liquid + (p.liquid ? eur(p.value, p.currency) : 0) }), { total: 0, liquid: 0 });
     const esopValue = vESOPs.reduce((s, e) => {
       const vv = Math.max(0, e.vestedQty * (e.currentPrice - e.strikePrice));
-      const uv = Math.max(0, e.unvestedQty * (e.currentPrice - e.strikePrice));
-      return { total: s.total + eur(vv + uv, e.currency), liquid: s.liquid + (e.liquid ? eur(vv, e.currency) : 0) };
+      // Net worth counts VESTED only — unvested options aren't owned yet (forfeited if you leave)
+      return { total: s.total + eur(vv, e.currency), liquid: s.liquid + (e.liquid ? eur(vv, e.currency) : 0) };
     }, { total: 0, liquid: 0 });
 
     const totalLiabEur = vLiab.reduce((s, l) => {
@@ -607,7 +607,7 @@ export default function App() {
     f(data.cashSavings).forEach(item => { const v = eur(item.amount, item.currency); cashTotal += v; if (item.liquid) liquidAssets += v; });
     f(data.crypto).forEach(item => { const v = eur(item.quantity * item.currentPrice, item.currency); cryptoTotal += v; if (item.liquid) liquidAssets += v; });
     f(data.realEstate || []).forEach(item => { const v = eur(item.value, item.currency); reTotal += v; if (item.liquid) liquidAssets += v; });
-    f(data.esops).forEach(item => { const vv = Math.max(0, item.vestedQty * (item.currentPrice - item.strikePrice)); const uv = Math.max(0, item.unvestedQty * (item.currentPrice - item.strikePrice)); esopTotal += eur(vv + uv, item.currency); if (item.liquid) liquidAssets += eur(vv, item.currency); });
+    f(data.esops).forEach(item => { const vv = Math.max(0, item.vestedQty * (item.currentPrice - item.strikePrice)); esopTotal += eur(vv, item.currency); if (item.liquid) liquidAssets += eur(vv, item.currency); });
 
     const liab = f(data.liabilities).reduce((s, l) => {
       const spTotal = (l.specialPayments || []).reduce((s, p) => s + (p.amount || 0), 0);
@@ -820,8 +820,7 @@ export default function App() {
     });
     updated.esops.forEach(e => {
       const vv = Math.max(0, e.vestedQty * (e.currentPrice - e.strikePrice));
-      const uv = Math.max(0, e.unvestedQty * (e.currentPrice - e.strikePrice));
-      const val = toEur(vv + uv, e.currency, histRate, histUsdRate);
+      const val = toEur(vv, e.currency, histRate, histUsdRate);
       esopTotal += val;
       histEntry.items[`esop_${e.id}`] = val;
     });
@@ -854,7 +853,7 @@ export default function App() {
       hf(updated.cashSavings, o).forEach(c => { const v = toEur(c.amount, c.currency, histRate, histUsdRate); oCash += v; if (c.liquid) oLiquid += v; });
       hf(updated.crypto, o).forEach(c => { const v = toEur(c.quantity * c.currentPrice, c.currency, histRate, histUsdRate); oCrypto += v; if (c.liquid) oLiquid += v; });
       hf(updated.realEstate || [], o).forEach(p => { const v = toEur(p.value, p.currency, histRate, histUsdRate); oRe += v; if (p.liquid) oLiquid += v; });
-      hf(updated.esops, o).forEach(e => { const vv = Math.max(0, e.vestedQty * (e.currentPrice - e.strikePrice)); const uv = Math.max(0, e.unvestedQty * (e.currentPrice - e.strikePrice)); oEsop += toEur(vv + uv, e.currency, histRate, histUsdRate); if (e.liquid) oLiquid += toEur(vv, e.currency, histRate, histUsdRate); });
+      hf(updated.esops, o).forEach(e => { const vv = Math.max(0, e.vestedQty * (e.currentPrice - e.strikePrice)); oEsop += toEur(vv, e.currency, histRate, histUsdRate); if (e.liquid) oLiquid += toEur(vv, e.currency, histRate, histUsdRate); });
       let oLiab = 0;
       hf(updated.liabilities, o).forEach(l => { const sp = (l.specialPayments || []).reduce((s, p) => s + (p.amount || 0), 0); const am = calcAmortization(l.totalAmount, l.interestRate, l.tenureMonths, getMonthsElapsed(l.startDate), sp, l.manualEMI || 0, l.balloonAmount || 0); oLiab += toEur(am.remainingPrincipal, l.currency, histRate, histUsdRate); });
       const oGross = oMf + oEq + oCash + oCrypto + oRe + oEsop;
@@ -1135,7 +1134,7 @@ export default function App() {
           data.cashSavings.forEach(c => { if (match(c.liquid)) currExp[c.currency] = (currExp[c.currency] || 0) + cvt(c.amount, c.currency); });
           data.crypto.forEach(c => { if (match(c.liquid)) { const v = c.quantity * c.currentPrice; currExp["USD"] = (currExp["USD"] || 0) + v / usdRate; }});
           (data.realEstate || []).forEach(p => { if (match(p.liquid)) currExp[p.currency] = (currExp[p.currency] || 0) + cvt(p.value, p.currency); });
-          data.esops.forEach(e => { if (match(e.liquid)) { const v = Math.max(0, (e.vestedQty + e.unvestedQty) * (e.currentPrice - e.strikePrice)); currExp[e.currency] = (currExp[e.currency] || 0) + cvt(v, e.currency); }});
+          data.esops.forEach(e => { if (match(e.liquid)) { const v = Math.max(0, e.vestedQty * (e.currentPrice - e.strikePrice)); currExp[e.currency] = (currExp[e.currency] || 0) + cvt(v, e.currency); }});
 
           const total = currExp.EUR + currExp.INR + currExp.USD;
           const items = [
