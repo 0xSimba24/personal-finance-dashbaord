@@ -1414,6 +1414,8 @@ export default function App() {
     const activeDate = new Date(activeYm + "-01");
     const monthLabel = activeDate.toLocaleDateString("en-US", { month: "short", year: "numeric" }).toUpperCase();
     const calendarYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    // If the active tracking month has rolled forward (early close), default new one-off dates to that month, not today's real date
+    const defaultOneOffDate = activeYm === calendarYm ? localDate() : `${activeYm}-01`;
     const ledger = (data.monthlyLedger || []);
     const ledgerByYm = Object.fromEntries(ledger.map(l => [l.ym, l]));
 
@@ -1548,7 +1550,7 @@ export default function App() {
               {data.oneOffExpenses.length > 0 && <span style={{ fontSize: "10px", color: colors.textDim, letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'IBM Plex Mono', monospace" }}>
                 This Month: <span style={{ color: colors.red }}>{fmt(calc.thisMonthOneOffEur)}</span> · Total: <span style={{ color: colors.text }}>{fmt(calc.totalOneOffEur)}</span>
               </span>}
-              <button style={s.btn} onClick={() => addItem("oneOffExpenses", { name: "Expense", amount: 0, currency: "EUR", date: localDate(), category: "Other" })}>+ ADD</button>
+              <button style={s.btn} onClick={() => addItem("oneOffExpenses", { name: "Expense", amount: 0, currency: "EUR", date: defaultOneOffDate, category: "Other" })}>+ ADD</button>
             </div>
           </div>
           {(() => {
@@ -1592,7 +1594,7 @@ export default function App() {
               {(data.oneOffIncome || []).length > 0 && <span style={{ fontSize: "10px", color: colors.textDim, letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'IBM Plex Mono', monospace" }}>
                 This Month: <span style={{ color: colors.green }}>{fmt(calc.thisMonthOneOffIncomeEur)}</span> · Total: <span style={{ color: colors.text }}>{fmt(calc.totalOneOffIncomeEur)}</span>
               </span>}
-              <button style={s.btn} onClick={() => addItem("oneOffIncome", { name: "Income", amount: 0, currency: "EUR", date: localDate(), category: "Other" })}>+ ADD</button>
+              <button style={s.btn} onClick={() => addItem("oneOffIncome", { name: "Income", amount: 0, currency: "EUR", date: defaultOneOffDate, category: "Other" })}>+ ADD</button>
             </div>
           </div>
           {(() => {
