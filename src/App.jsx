@@ -1551,23 +1551,37 @@ export default function App() {
               <button style={s.btn} onClick={() => addItem("oneOffExpenses", { name: "Expense", amount: 0, currency: "EUR", date: localDate(), category: "Other" })}>+ ADD</button>
             </div>
           </div>
-          {data.oneOffExpenses.length === 0 ? <div style={{ fontSize: "10px", color: colors.textMuted, padding: "16px 0", textAlign: "center", letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'IBM Plex Mono', monospace" }}>No one-off expenses</div> :
-          <table style={{ ...s.table, marginTop: "10px" }}><thead><tr><th style={s.th}>Item</th><th style={s.th}>Category</th><th style={s.th}>Amount</th><th style={s.th}>Curr</th><th style={s.th}>Date</th><th style={s.th}></th></tr></thead>
-          <tbody>{data.oneOffExpenses.map(e => {
-            const cat = e.category || "Other";
-            const catColor = ONEOFF_CATEGORY_COLORS[cat] || colors.textDim;
-            return <tr key={e.id}>
-              <td style={s.td}><ECell value={e.name} onChange={v => updateItem("oneOffExpenses", e.id, "name", v)} /></td>
-              <td style={s.td}>
-                <span style={{ display: "inline-block", width: "8px", height: "8px", background: catColor, marginRight: "6px", verticalAlign: "middle" }} />
-                <select style={{ ...s.select, color: colors.textDim }} value={cat} onChange={ev => updateItem("oneOffExpenses", e.id, "category", ev.target.value)}>{ONEOFF_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}</select>
-              </td>
-              <td style={s.td}><ECell value={e.amount} type="number" onChange={v => updateItem("oneOffExpenses", e.id, "amount", v)} /></td>
-              <td style={s.td}><CurrSelect value={e.currency} onChange={v => updateItem("oneOffExpenses", e.id, "currency", v)} /></td>
-              <td style={s.td}><input type="date" style={s.input} value={e.date} onChange={ev => updateItem("oneOffExpenses", e.id, "date", ev.target.value)} /></td>
-              <td style={s.td}><button style={s.btnDanger} onClick={() => removeItem("oneOffExpenses", e.id)}>×</button></td>
-            </tr>;
-          })}</tbody></table>}
+          {(() => {
+            const thisMonth = data.oneOffExpenses.filter(e => (e.date || "").slice(0, 7) === activeYm);
+            const earlier = data.oneOffExpenses.filter(e => (e.date || "").slice(0, 7) !== activeYm);
+            const renderRow = (e) => {
+              const cat = e.category || "Other";
+              const catColor = ONEOFF_CATEGORY_COLORS[cat] || colors.textDim;
+              return <tr key={e.id}>
+                <td style={s.td}><ECell value={e.name} onChange={v => updateItem("oneOffExpenses", e.id, "name", v)} /></td>
+                <td style={s.td}>
+                  <span style={{ display: "inline-block", width: "8px", height: "8px", background: catColor, marginRight: "6px", verticalAlign: "middle" }} />
+                  <select style={{ ...s.select, color: colors.textDim }} value={cat} onChange={ev => updateItem("oneOffExpenses", e.id, "category", ev.target.value)}>{ONEOFF_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}</select>
+                </td>
+                <td style={s.td}><ECell value={e.amount} type="number" onChange={v => updateItem("oneOffExpenses", e.id, "amount", v)} /></td>
+                <td style={s.td}><CurrSelect value={e.currency} onChange={v => updateItem("oneOffExpenses", e.id, "currency", v)} /></td>
+                <td style={s.td}><input type="date" style={s.input} value={e.date} onChange={ev => updateItem("oneOffExpenses", e.id, "date", ev.target.value)} /></td>
+                <td style={s.td}><button style={s.btnDanger} onClick={() => removeItem("oneOffExpenses", e.id)}>×</button></td>
+              </tr>;
+            };
+            return <>
+              {thisMonth.length === 0 ? <div style={{ fontSize: "10px", color: colors.textMuted, padding: "16px 0", textAlign: "center", letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'IBM Plex Mono', monospace" }}>No one-off expenses this month</div> :
+              <table style={{ ...s.table, marginTop: "10px" }}><thead><tr><th style={s.th}>Item</th><th style={s.th}>Category</th><th style={s.th}>Amount</th><th style={s.th}>Curr</th><th style={s.th}>Date</th><th style={s.th}></th></tr></thead>
+              <tbody>{thisMonth.map(renderRow)}</tbody></table>}
+              {earlier.length > 0 && <details style={{ marginTop: "12px" }}>
+                <summary style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "10px", color: colors.textDim, letterSpacing: "0.14em", textTransform: "uppercase", cursor: "pointer" }}>
+                  <span style={{ color: colors.accent, marginRight: "6px" }}>&gt;</span>Earlier ({earlier.length})
+                </summary>
+                <table style={{ ...s.table, marginTop: "10px" }}><thead><tr><th style={s.th}>Item</th><th style={s.th}>Category</th><th style={s.th}>Amount</th><th style={s.th}>Curr</th><th style={s.th}>Date</th><th style={s.th}></th></tr></thead>
+                <tbody>{[...earlier].sort((a, b) => (b.date || "").localeCompare(a.date || "")).map(renderRow)}</tbody></table>
+              </details>}
+            </>;
+          })()}
         </div>
 
         {/* One-off Income */}
@@ -1581,23 +1595,38 @@ export default function App() {
               <button style={s.btn} onClick={() => addItem("oneOffIncome", { name: "Income", amount: 0, currency: "EUR", date: localDate(), category: "Other" })}>+ ADD</button>
             </div>
           </div>
-          {(data.oneOffIncome || []).length === 0 ? <div style={{ fontSize: "10px", color: colors.textMuted, padding: "16px 0", textAlign: "center", letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'IBM Plex Mono', monospace" }}>No one-off income · Bonus, gifts, crypto sales, freelance, tax refunds</div> :
-          <table style={{ ...s.table, marginTop: "10px" }}><thead><tr><th style={s.th}>Source</th><th style={s.th}>Category</th><th style={s.th}>Amount</th><th style={s.th}>Curr</th><th style={s.th}>Date</th><th style={s.th}></th></tr></thead>
-          <tbody>{(data.oneOffIncome || []).map(e => {
-            const cat = e.category || "Other";
-            const catColor = ONEOFF_INCOME_COLORS[cat] || colors.textDim;
-            return <tr key={e.id}>
-              <td style={s.td}><ECell value={e.name} onChange={v => updateItem("oneOffIncome", e.id, "name", v)} /></td>
-              <td style={s.td}>
-                <span style={{ display: "inline-block", width: "8px", height: "8px", background: catColor, marginRight: "6px", verticalAlign: "middle" }} />
-                <select style={{ ...s.select, color: colors.textDim }} value={cat} onChange={ev => updateItem("oneOffIncome", e.id, "category", ev.target.value)}>{ONEOFF_INCOME_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}</select>
-              </td>
-              <td style={s.td}><ECell value={e.amount} type="number" onChange={v => updateItem("oneOffIncome", e.id, "amount", v)} /></td>
-              <td style={s.td}><CurrSelect value={e.currency} onChange={v => updateItem("oneOffIncome", e.id, "currency", v)} /></td>
-              <td style={s.td}><input type="date" style={s.input} value={e.date} onChange={ev => updateItem("oneOffIncome", e.id, "date", ev.target.value)} /></td>
-              <td style={s.td}><button style={s.btnDanger} onClick={() => removeItem("oneOffIncome", e.id)}>×</button></td>
-            </tr>;
-          })}</tbody></table>}
+          {(() => {
+            const all = data.oneOffIncome || [];
+            const thisMonth = all.filter(e => (e.date || "").slice(0, 7) === activeYm);
+            const earlier = all.filter(e => (e.date || "").slice(0, 7) !== activeYm);
+            const renderRow = (e) => {
+              const cat = e.category || "Other";
+              const catColor = ONEOFF_INCOME_COLORS[cat] || colors.textDim;
+              return <tr key={e.id}>
+                <td style={s.td}><ECell value={e.name} onChange={v => updateItem("oneOffIncome", e.id, "name", v)} /></td>
+                <td style={s.td}>
+                  <span style={{ display: "inline-block", width: "8px", height: "8px", background: catColor, marginRight: "6px", verticalAlign: "middle" }} />
+                  <select style={{ ...s.select, color: colors.textDim }} value={cat} onChange={ev => updateItem("oneOffIncome", e.id, "category", ev.target.value)}>{ONEOFF_INCOME_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}</select>
+                </td>
+                <td style={s.td}><ECell value={e.amount} type="number" onChange={v => updateItem("oneOffIncome", e.id, "amount", v)} /></td>
+                <td style={s.td}><CurrSelect value={e.currency} onChange={v => updateItem("oneOffIncome", e.id, "currency", v)} /></td>
+                <td style={s.td}><input type="date" style={s.input} value={e.date} onChange={ev => updateItem("oneOffIncome", e.id, "date", ev.target.value)} /></td>
+                <td style={s.td}><button style={s.btnDanger} onClick={() => removeItem("oneOffIncome", e.id)}>×</button></td>
+              </tr>;
+            };
+            return <>
+              {thisMonth.length === 0 ? <div style={{ fontSize: "10px", color: colors.textMuted, padding: "16px 0", textAlign: "center", letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'IBM Plex Mono', monospace" }}>No one-off income this month · Bonus, gifts, crypto sales, freelance, tax refunds</div> :
+              <table style={{ ...s.table, marginTop: "10px" }}><thead><tr><th style={s.th}>Source</th><th style={s.th}>Category</th><th style={s.th}>Amount</th><th style={s.th}>Curr</th><th style={s.th}>Date</th><th style={s.th}></th></tr></thead>
+              <tbody>{thisMonth.map(renderRow)}</tbody></table>}
+              {earlier.length > 0 && <details style={{ marginTop: "12px" }}>
+                <summary style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "10px", color: colors.textDim, letterSpacing: "0.14em", textTransform: "uppercase", cursor: "pointer" }}>
+                  <span style={{ color: colors.accent, marginRight: "6px" }}>&gt;</span>Earlier ({earlier.length})
+                </summary>
+                <table style={{ ...s.table, marginTop: "10px" }}><thead><tr><th style={s.th}>Source</th><th style={s.th}>Category</th><th style={s.th}>Amount</th><th style={s.th}>Curr</th><th style={s.th}>Date</th><th style={s.th}></th></tr></thead>
+                <tbody>{[...earlier].sort((a, b) => (b.date || "").localeCompare(a.date || "")).map(renderRow)}</tbody></table>
+              </details>}
+            </>;
+          })()}
         </div>
 
         {/* Cash Flow 12mo Chart */}
